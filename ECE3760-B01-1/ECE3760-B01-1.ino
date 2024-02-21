@@ -10,6 +10,9 @@
 #define SKIP  0
 #define SWEEP 1
 
+#define LEFT  1
+#define RIGHT 2
+
 #define FALLING_EDGE 1
 #define RISING_EDGE  2
 
@@ -61,7 +64,7 @@
 
 // === STRUCTS & ENUMS ============================================================================
 
-typedef struct packet_struct {
+typedef struct esp_now_packet_struct {
   int leftCmd;   // 0: clear, 1: low, 2: mid, 3: high
   int rightCmd;  // 0: clear, 1: low, 2: mid, 3: high
 } esp_now_packet;
@@ -69,17 +72,17 @@ typedef struct packet_struct {
 
 // === GLOBAL VARIABLES ===========================================================================
 
-int deviceType = SKIP;  // Used to determine if the device should act like a [SKIP] or [SWEEP] device
+int deviceType = SWEEP;  // Used to determine if the device should act like a [SKIP] or [SWEEP] device
 
 int skipInputPins[] = {PB_1_PIN, PB_2_PIN, JOYSTICK_X_PIN, JOYSTICK_X_PIN, JOYSTICK_X_PIN};  //     [SKIP]
 int sweepInputPins[] = {PB_1_PIN, SW_1_PIN, SW_2_PIN};  //                                          [SWEEP]
 
 int jsValues[] = {0, 0, 0};  // Joystick (JS) last EMA values {x, y, sw}                            [SKIP]
 
+int swPosition = 0;  // Switch (SW) current position                                                [SWEEP]
+
 bool pbLastValue[] = {false,    false};  // Push Button (PB) last read state                        [SKIP/SWEEP]
 bool pbStates[] =    {false,    false};  // Push Button (PB) logical value                          [SKIP/SWEEP]
-
-int swPosition = 0;  // Switch (SW) current position                                                [SWEEP]
 
 int rgb1Pins[] =     {RGB1_R_PIN,     RGB1_G_PIN,     RGB1_B_PIN    };  // RGB LED 1 PWM pins       [SKIP]
 int rgb2Pins[] =     {RGB2_R_PIN,     RGB2_G_PIN,     RGB2_B_PIN    };  // RGB LED 2 PWM pins       [SKIP]
@@ -101,8 +104,8 @@ Adafruit_NeoPixel pixels(LED_NUM_PIXELS, LED_STRIP_PIN, NEO_GRB + NEO_KHZ800);  
 esp_now_packet packet;  // Instance of ESP-NOW packet to send to connected clients                  [SKIP/SWEEP]
 esp_now_peer_info_t peerInfo;  // Information about connected peers                                 [SKIP]
 
-uint8_t hostAddress[] =   {0x40, 0x22, 0xD8, 0xEA, 0x76, 0x30};  //                                 [SWEEP]
-uint8_t clientAddress[] = {0x40, 0x22, 0xD8, 0xEE, 0x6D, 0xE0};  //                                 [SKIP]
+uint8_t hostAddress[] =   {0x40, 0x22, 0xD8, 0xEA, 0x76, 0x30};  // TODO: determine dynamically     [SWEEP]
+uint8_t clientAddress[] = {0x40, 0x22, 0xD8, 0xEE, 0x6D, 0xE0};  // TODO: determine dynamically     [SKIP]
 
 
 // === MAIN PROGRAM ===============================================================================
@@ -114,7 +117,7 @@ void setup() {
   // Configure Wifi
   WiFi.mode(WIFI_MODE_STA);
   Serial.print("Mac Address: ");
-  Serial.println(WiFi.macAddress());
+  Serial.println(WiFi.macAddress());  // TODO: fix bug on SWEEP devices (MAC gets printed as non-sense)
 
   if (deviceType == SKIP) {
   
@@ -132,18 +135,18 @@ void setup() {
     }
     esp_now_register_send_cb(sent);
 
-    // Register peer
+    // Register peer (TODO: setup mulitple peers)
     peerInfo.channel = 0;  
     peerInfo.encrypt = false;
 
-    // Register first peer
+    // Register first peer (TODO: have 'pairing' process for dynamic connection)
     memcpy(peerInfo.peer_addr, clientAddress, 6);
     if (esp_now_add_peer(&peerInfo) != ESP_OK){
       Serial.println("Failed to add peer");
       return;
     }
 
-    delay(1000);  // Extra delay to ensure ESP-NOW has enough time to configure
+    delay(200);  // Extra delay to ensure ESP-NOW has enough time to configure
 
     // Initialize LED colors
     setRGBA(rgb1Channels, BLUE, 0.25);
@@ -167,12 +170,7 @@ void setup() {
     esp_now_register_recv_cb(recieve);
 
     // Initialize LED colors
-    pixels.clear();
-    for (int i = 0; i < LED_NUM_PIXELS; i++) {
-      pixels.setPixelColor(i, pixels.Color(0, 0, 20));
-    }
-    pixels.show();
-
+    setStripRGBA(BLUE, 0.10);
   }
 }
 
@@ -222,6 +220,18 @@ void setRGBA(int* channels, int rgb, float alpha) {
   ledcWrite(channels[0], (int)(((rgb >> 16) & 0xFF) * alpha));
   ledcWrite(channels[1], (int)(((rgb >> 8 ) & 0xFF) * alpha));
   ledcWrite(channels[2], (int)(((rgb >> 0 ) & 0xFF) * alpha));
+}
+
+void setStripRGBA(int rgb, float alpha) {
+  pixels.clear();
+  for (int i = 0; i < LED_NUM_PIXELS; i++) {
+    pixels.setPixelColor(i, pixels.Color(
+      (int)(((rgb >> 16) & 0xFF) * alpha),
+      (int)(((rgb >> 8 ) & 0xFF) * alpha),
+      (int)(((rgb >> 0 ) & 0xFF) * alpha)
+    ));
+  }
+  pixels.show();
 }
 
 void pulseRGB(int* channel, int rgb, int count, int step, int time) {
@@ -280,9 +290,7 @@ void updateJoystickValues() {
 void updateSwitchPosition() {
   if (digitalRead(SW_1_PIN)) {
     swPosition = 1;
-  }
-
-  if (digitalRead(SW_2_PIN)) {
+  } else if (digitalRead(SW_2_PIN)) {
     swPosition = 2;
   }
 }
@@ -376,8 +384,24 @@ void skipLogic() {
 }
 
 void sweepLogic() {
-  // Serial.printf("PB: %d\n", pbStates[pbPower]);
-  // Serial.printf("SW: %d\n", swPosition);
+  // TODO: any logic required by the sweep during runtime (ex. timeout)
+}
+
+void sweepProcessCommand(int command) {
+  switch (command) {
+    case 0:
+      setStripRGBA(BLUE, 0.10);
+      break;
+    case 1:
+      setStripRGBA(RED, 0.10);
+      break;
+    case 2:
+      setStripRGBA(YELLOW, 0.10);
+      break;
+    case 3:
+      setStripRGBA(GREEN, 0.10);
+      break;
+  }
 }
 
 
@@ -390,35 +414,21 @@ void transmit() {
 }
 
 // Callback function when data is recieved
-void recieve(const uint8_t* macAddress, const uint8_t* data, int len) {
-  memcpy(&packet, data, sizeof(packet));
-  Serial.printf("left: %d | right: %d\n", packet.leftCmd, packet.rightCmd);
-  
-  pixels.clear();
-  // TODO: make separate function & remove hardcoded 'left'
-  switch (packet.leftCmd) {
-    case 0:
-      for (int i = 0; i < LED_NUM_PIXELS; i++) {
-        pixels.setPixelColor(i, pixels.Color(0, 0, 20));
-      }
-      break;
-    case 1:
-      for (int i = 0; i < LED_NUM_PIXELS; i++) {
-        pixels.setPixelColor(i, pixels.Color(20, 0, 0));
-      }
-      break;
-    case 2:
-      for (int i = 0; i < LED_NUM_PIXELS; i++) {
-        pixels.setPixelColor(i, pixels.Color(20, 20, 0));
-      }
-      break;
-    case 3:
-      for (int i = 0; i < LED_NUM_PIXELS; i++) {
-        pixels.setPixelColor(i, pixels.Color(0, 20, 0));
-      }
-      break;
+void recieve(const uint8_t* macAddress, const uint8_t* data, int length) {
+  char macAddressString[18];  // string for holding the sender's MAC address
+  printMAC(macAddress, macAddressString);  // 'cast' MAC address to string
+
+  memcpy(&packet, data, sizeof(packet));  // copy contents of packet into memory
+
+  Serial.printf("Packet from '%s' recieved with length %d\n", macAddressString, length);
+  Serial.printf(" left: %d\n right: %d\n", (int)packet.leftCmd, (int)packet.rightCmd);
+
+  // Process the latest skip command
+  if (swPosition == LEFT) {
+    sweepProcessCommand(packet.leftCmd);
+  } else if (swPosition == RIGHT) {
+    sweepProcessCommand(packet.rightCmd);
   }
-  pixels.show();
 }
 
 // Callback function when data is sent
