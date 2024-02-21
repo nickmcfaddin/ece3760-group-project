@@ -12,7 +12,7 @@
 
 Clone the project
 ```shell
-
+git clone git@github.com:Kameroni33/ECE3760-B01-1.git  # NOTE: requires a configured SSH key (alternatively use HTTPS)
 ```
 
 > **Note:** this repository is public, but in order to contribute to the source code, you will need to be added as a _contributor_. For repository access, please email your GitHub user information to [ronaldk1@myumanitoba.ca]().
