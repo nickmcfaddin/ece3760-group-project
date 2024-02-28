@@ -18,7 +18,6 @@
 
 #define PB_1_PIN 36
 #define PB_2_PIN 39
-#define PB_3_PIN 32
 
 #define SW_1_PIN 25
 #define SW_2_PIN 26
@@ -72,17 +71,14 @@ typedef struct esp_now_packet_struct {
 
 // === GLOBAL VARIABLES ===========================================================================
 
-int deviceType = SWEEP;  // Used to determine if the device should act like a [SKIP] or [SWEEP] device
+int deviceType = SKIP;  // Used to determine if the device should act like a [SKIP] or [SWEEP] device
 
 int skipInputPins[] = {PB_1_PIN, PB_2_PIN, JOYSTICK_X_PIN, JOYSTICK_X_PIN, JOYSTICK_X_PIN};  //     [SKIP]
 int sweepInputPins[] = {PB_1_PIN, SW_1_PIN, SW_2_PIN};  //                                          [SWEEP]
 
 int jsValues[] = {0, 0, 0};  // Joystick (JS) last EMA values {x, y, sw}                            [SKIP]
-
+bool pbStates[] = {false, false};  // Push Button (PB) logical value                                [SKIP/SWEEP]
 int swPosition = 0;  // Switch (SW) current position                                                [SWEEP]
-
-bool pbLastValue[] = {false,    false};  // Push Button (PB) last read state                        [SKIP/SWEEP]
-bool pbStates[] =    {false,    false};  // Push Button (PB) logical value                          [SKIP/SWEEP]
 
 int rgb1Pins[] =     {RGB1_R_PIN,     RGB1_G_PIN,     RGB1_B_PIN    };  // RGB LED 1 PWM pins       [SKIP]
 int rgb2Pins[] =     {RGB2_R_PIN,     RGB2_G_PIN,     RGB2_B_PIN    };  // RGB LED 2 PWM pins       [SKIP]
@@ -178,8 +174,8 @@ void loop() {
 
   if (deviceType == SKIP) {
     // Update push button (PB) states
-    bool currentValues[] = {digitalRead(PB_1_PIN), digitalRead(PB_2_PIN)};
-    updateButtonStates(currentValues, 2);
+    pbStates[pbLeft] = digitalRead(PB_1_PIN);
+    pbStates[pbRight] = digitalRead(PB_2_PIN);
     // Update joystick (JS) values
     updateJoystickValues();
     // Perform Skip Logic
@@ -188,8 +184,7 @@ void loop() {
 
   if (deviceType == SWEEP) {
     // Update push button (PB) states
-    bool currentValues[] = {digitalRead(PB_1_PIN)};
-    updateButtonStates(currentValues, 1);
+    pbStates[pbPower] = digitalRead(PB_1_PIN);
     // Update switch (SW) position
     updateSwitchPosition();
     // Perform Sweep Logic
@@ -232,49 +227,6 @@ void setStripRGBA(int rgb, float alpha) {
     ));
   }
   pixels.show();
-}
-
-void pulseRGB(int* channel, int rgb, int count, int step, int time) {
-  for (int i = 0; i < count; i++) {
-    // Fade In
-    for (int fade = 1; fade <= step; fade++) {
-      setRGBA(channel, rgb, (float)fade / step);
-      delay(time);
-    }
-    // Fade Out
-    for (int fade = step; fade >= 1; fade--) {
-      setRGBA(channel, rgb, (float)fade / step);
-      delay(time);
-    }
-  }
-}
-
-bool detectEdgeTransition(bool lastState, bool currentState, int edge) {
-  bool result = false;
-  switch (edge) {
-    case FALLING_EDGE:
-      if (lastState && !currentState) {
-        result = true;
-      }
-      break;
-    case RISING_EDGE:
-      if (!lastState && currentState) {
-        result = true;
-      }
-      break;
-    default:
-      break;
-  }
-  return result;
-}
-
-void updateButtonStates(bool* currentValues, int numButtons) {
-  for (int i = 0; i < numButtons; i++) {
-    if (detectEdgeTransition(pbLastValue[i], currentValues[i], RISING_EDGE)) {
-      pbStates[i] = !pbStates[i];
-    }
-    pbLastValue[i] = currentValues[i];
-  }
 }
 
 void updateJoystickValues() {
@@ -328,7 +280,6 @@ void skipLogic() {
 
     // Update client
     packet.leftCmd = 0;
-    transmit();
 
   } else if (jsValues[jsX] > UPPER_THRESHOLD + CLEAR_THRESHOLD) {
 
@@ -337,7 +288,6 @@ void skipLogic() {
 
     // Update client
     packet.rightCmd = 0;
-    transmit();
 
   } else {
 
@@ -356,9 +306,6 @@ void skipLogic() {
         setRGBA(leftLED, YELLOW, 0.8);
         packet.leftCmd = 2;
       }
-
-      pbStates[pbLeft] = false;  // acknowledge LED set -> button state FALSE
-      transmit(); // udate client
     }
 
     // Push Button RIGHT
@@ -376,11 +323,10 @@ void skipLogic() {
         setRGBA(rightLED, YELLOW, 0.8);
         packet.rightCmd = 2;
       }
-
-      pbStates[pbRight] = false;  // acknowledge LED set -> button state FALSE
-      transmit(); // udate client
     }
   }
+
+  transmit(); // update client
 }
 
 void sweepLogic() {
