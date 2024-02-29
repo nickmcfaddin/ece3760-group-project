@@ -1,6 +1,6 @@
 // === COMPILATION "FLAGS" ==========================================================================================================================
 
-// #define SKIP_DEVICE
+#define SKIP_DEVICE
 #define DEBUG
 
 
@@ -8,6 +8,7 @@
 
 #include "WiFi.h"
 #include "esp_now.h"
+#include "esp_wifi.h"
 
 #ifndef SKIP_DEVICE
 #include <Adafruit_NeoPixel.h>
@@ -83,9 +84,10 @@ typedef struct esp_now_packet_struct {
 
 // === GLOBAL VARIABLES ===========================================================================
 
-#ifdef SKIP_DEVICE
-
+volatile bool enable = true;
 float ledBrightness = 0.25;
+
+#ifdef SKIP_DEVICE
 
 bool pbLeft =  false;  // value of 'left'  push button (PB) [digital]
 bool pbRight = false;  // value of 'right' push button (PB) [digital]
@@ -139,67 +141,72 @@ void setup() {
     #ifdef DEBUG
     Serial.println("Error initializing ESP-NOW");
     #endif
+  }
+
+  // Configure sleep timer (NOTE: time measured in us not ms)
+  if (esp_sleep_enable_timer_wakeup(SYS_DELAY * 1000) != ESP_OK) {
+    #ifdef DEBUG
+    Serial.println("Error enabling wakeup timer");
+    #endif
+  }
+
+  #ifdef SKIP_DEVICE
+  
+  // Configure input GPIOs
+  pinMode(PB_1_PIN, INPUT);
+  pinMode(PB_2_PIN, INPUT);
+  pinMode(JOYSTICK_X_PIN, INPUT);
+  pinMode(JOYSTICK_Y_PIN, INPUT);
+  pinMode(JOYSTICK_SW_PIN, INPUT);
+
+  // Configure PWM channels
+  configurePWM(rgb1Pins, rgb1Channels, 3);  // configure PWM for RGB LED 1
+  configurePWM(rgb2Pins, rgb2Channels, 3);  // configure PWM for RGB LED 2
+
+  // Register callback function for 'on sent' event
+  esp_now_register_send_cb(onSent);
+
+  // Register peer (TODO: setup mulitple peers)
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+
+  // Register first peer (TODO: have 'pairing' process for dynamic connection)
+  memcpy(peerInfo.peer_addr, clientAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    #ifdef DEBUG
+    Serial.println("Failed to add peer");
+    #endif
     return;
   }
 
-#ifdef SKIP_DEVICE
-  
-    // Configure input GPIOs
-    pinMode(PB_1_PIN, INPUT);
-    pinMode(PB_2_PIN, INPUT);
-    pinMode(JOYSTICK_X_PIN, INPUT);
-    pinMode(JOYSTICK_Y_PIN, INPUT);
-    pinMode(JOYSTICK_SW_PIN, INPUT);
+  // Initialize LED colors
+  setPwmRGBA(rgb1Channels, BLUE, ledBrightness);
+  setPwmRGBA(rgb2Channels, BLUE, ledBrightness);
 
-    // Configure PWM channels
-    configurePWM(rgb1Pins, rgb1Channels, 3);  // configure PWM for RGB LED 1
-    configurePWM(rgb2Pins, rgb2Channels, 3);  // configure PWM for RGB LED 2
-
-    // Register callback function for 'on sent' event
-    esp_now_register_send_cb(onSent);
-
-    // Register peer (TODO: setup mulitple peers)
-    peerInfo.channel = 0;  
-    peerInfo.encrypt = false;
-
-    // Register first peer (TODO: have 'pairing' process for dynamic connection)
-    memcpy(peerInfo.peer_addr, clientAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-      #ifdef DEBUG
-      Serial.println("Failed to add peer");
-      #endif
-      return;
-    }
-
-    delay(200);  // Extra delay to ensure ESP-NOW has enough time to configure
-
-    // Initialize LED colors
-    setPwmRGBA(rgb1Channels, BLUE, ledBrightness);
-    setPwmRGBA(rgb2Channels, BLUE, ledBrightness);
-
-#else
+  #else
     
-    // Configure input GPIOs
-    pinMode(PB_1_PIN, INPUT);
-    pinMode(SW_1_PIN, INPUT);
-    pinMode(SW_2_PIN, INPUT);
+  // Configure input GPIOs
+  pinMode(PB_1_PIN, INPUT);
+  pinMode(SW_1_PIN, INPUT);
+  pinMode(SW_2_PIN, INPUT);
 
-    // Configure NeoPixel
-    pixels.begin();
+  // Configure NeoPixel
+  pixels.begin();
 
-    // Register callback function for 'on recieve' event
-    esp_now_register_recv_cb(onRecieve);
+  // Register callback function for 'on recieve' event
+  esp_now_register_recv_cb(onRecieve);
 
-    // Initialize LED colors
-    setStripRGBA(BLUE, ledBrightness);
+  // Initialize LED colors
+  setStripRGBA(BLUE, ledBrightness);
 
-#endif
+  #endif
 
 }
 
 void loop() {
+  if (enable) {
 
-#ifdef SKIP_DEVICE
+    #ifdef SKIP_DEVICE
 
     // 1. Update push button (PB) values
     pbLeft = digitalRead(PB_1_PIN);
@@ -213,20 +220,22 @@ void loop() {
     // 3. Perform Skip Logic
     skipLogic();
 
-#else
+    #else
 
     // 1. Update push button (PB) values
     pbPower = digitalRead(PB_1_PIN);
 
     // 2. Update switch (SW) value
-    swPosition = digitalRead(SW_1_PIN) ? LEFT : RIGHT;
+    swPosition = digitalRead(SW_1_PIN) ? LEFT : RIGHT;  // ASSUMPTION: anything not 'left'
 
     // 3. Perform Sweep Logic
     sweepLogic();
 
-#endif
-  
-  delay(SYS_DELAY);  // System delay on every iteration
+    // 4. Delay to reduce the workload/power consumption
+    delay(SYS_DELAY);
+
+    #endif
+  }
 }
 
 
@@ -308,7 +317,8 @@ void skipLogic() {
     }
   }
 
-  transmit();  // update client
+  enable = false;  // disable main thread sampling until ACK is recieved
+  transmit();      // update client
 }
 
 #else
@@ -342,6 +352,7 @@ void sweepLogic() {
 
 void transmit() {
   esp_err_t result = esp_now_send(0, (uint8_t *) &packet, sizeof(esp_now_packet_t));
+
   #ifdef DEBUG
   Serial.printf("Transmit: %s\n", result == ESP_OK ? "SUCCESS" : "FAIL");
   #endif
@@ -364,6 +375,38 @@ void onSent(const uint8_t* macAddress, esp_now_send_status_t status) {
   printMAC(macAddress, macAddressString);  // 'cast' MAC address to string
   Serial.printf("Packet to '%s' send status: %s\n", macAddressString, status == ESP_NOW_SEND_SUCCESS ? "SUCCESS" : "FAIL");
   #endif
+
+  // // Turn off Wifi before entering 'light' sleep
+  // if (esp_wifi_stop() != ESP_OK) {
+  //   #ifdef DEBUG
+  //   Serial.println("Error stopping Wifi");
+  //   #endif
+  // }
+
+  // // Enter 'light' sleep for SYS_DELAY duration (ms)
+  // if (esp_light_sleep_start() != ESP_OK){
+  //   #ifdef DEBUG
+  //   Serial.println("Error starting light sleep");
+  //   #endif 
+  // }
+
+  // // Restart Wifi after leaving 'light' sleep
+  // if (esp_wifi_start() != ESP_OK){
+  //   #ifdef DEBUG
+  //   Serial.println("Error starting Wifi");
+  //   #endif
+  // }
+
+  // // Double check ESP-NOW is configured (repeated for redundency)
+  // if (esp_now_init() != ESP_OK) {
+  //   #ifdef DEBUG
+  //   Serial.println("Error initializing ESP-NOW");
+  //   #endif
+  // }
+
+  delay(SYS_DELAY);
+
+  enable = true;  // enable to resume main thread sampling
 }
 
 // Copy MAC address to string
