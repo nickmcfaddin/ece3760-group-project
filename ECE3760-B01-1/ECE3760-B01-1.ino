@@ -10,6 +10,18 @@
 #include "esp_now.h"
 #include "esp_wifi.h"
 
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/ledc.h"
+#include "esp_err.h"
+#include "esp_pm.h"
+#include "esp_sleep.h"
+#include "driver/uart.h"
+#include "esp32/rom/uart.h"
+
+
+
 #ifndef SKIP_DEVICE
 #include <Adafruit_NeoPixel.h>
 #endif
@@ -67,6 +79,21 @@
 #define CLEAR_THRESHOLD 900
 
 
+
+
+
+
+#define LEDC_LS_TIMER          LEDC_TIMER_0
+#define LEDC_LS_MODE           LEDC_LOW_SPEED_MODE
+#define LEDC_LS_CH2_GPIO       (19)
+#define LEDC_LS_CH2_CHANNEL    LEDC_CHANNEL_2
+
+#define LEDC_TEST_CH_NUM       (6)
+#define LEDC_TEST_DUTY         (4000)
+#define LEDC_TEST_FADE_TIME    (3000)
+
+
+
 // === STRUCTS & ENUMS ============================================================================
 
 typedef enum state_enum {
@@ -120,9 +147,81 @@ uint8_t hostAddress[] =   {0x40, 0x22, 0xD8, 0xEA, 0x76, 0x30};  // TODO: determ
 uint8_t clientAddress[] = {0x40, 0x22, 0xD8, 0xEE, 0x6D, 0xE0};  // TODO: determine dynamically
 
 
+
+
+
+ledc_timer_config_t ledc_timer = {
+  .speed_mode = LEDC_LS_MODE,            // timer mode
+  .duty_resolution = LEDC_TIMER_13_BIT,  // resolution of PWM duty
+  .timer_num = LEDC_LS_TIMER,            // timer index
+  .freq_hz = 100,                        // frequency of PWM signal
+  .clk_cfg = LEDC_USE_RTC8M_CLK          // Auto select the source clock
+};
+
+ledc_channel_config_t ledc_channel[LEDC_TEST_CH_NUM] = {
+  {
+    .gpio_num   = LEDC_LS_CH2_GPIO,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_LS_CH2_CHANNEL,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  },
+  {
+    .gpio_num   = LEDC_LS_CH2_GPIO,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_LS_CH2_CHANNEL,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  },
+  {
+    .gpio_num   = LEDC_LS_CH2_GPIO,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_LS_CH2_CHANNEL,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  },
+  {
+    .gpio_num   = LEDC_LS_CH2_GPIO,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_LS_CH2_CHANNEL,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  },
+  {
+    .gpio_num   = LEDC_LS_CH2_GPIO,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_LS_CH2_CHANNEL,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  }, {
+    .gpio_num   = LEDC_LS_CH2_GPIO,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_LS_CH2_CHANNEL,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  }
+};
+
+
+
 // === MAIN PROGRAM ===============================================================================
 
 void setup() {
+
+  ledc_timer_config(&ledc_timer);
+
+  for (int ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
+    ledc_channel_config(&ledc_channel[ch]);
+  }
+
+
+  
 
   #ifdef DEBUG
   // Configure Serial Communication
@@ -376,33 +475,33 @@ void onSent(const uint8_t* macAddress, esp_now_send_status_t status) {
   Serial.printf("Packet to '%s' send status: %s\n", macAddressString, status == ESP_NOW_SEND_SUCCESS ? "SUCCESS" : "FAIL");
   #endif
 
-  // // Turn off Wifi before entering 'light' sleep
-  // if (esp_wifi_stop() != ESP_OK) {
-  //   #ifdef DEBUG
-  //   Serial.println("Error stopping Wifi");
-  //   #endif
-  // }
+  // Turn off Wifi before entering 'light' sleep
+  if (esp_wifi_stop() != ESP_OK) {
+    #ifdef DEBUG
+    Serial.println("Error stopping Wifi");
+    #endif
+  }
 
-  // // Enter 'light' sleep for SYS_DELAY duration (ms)
-  // if (esp_light_sleep_start() != ESP_OK){
-  //   #ifdef DEBUG
-  //   Serial.println("Error starting light sleep");
-  //   #endif 
-  // }
+  // Enter 'light' sleep for SYS_DELAY duration (ms)
+  if (esp_light_sleep_start() != ESP_OK){
+    #ifdef DEBUG
+    Serial.println("Error starting light sleep");
+    #endif 
+  }
 
-  // // Restart Wifi after leaving 'light' sleep
-  // if (esp_wifi_start() != ESP_OK){
-  //   #ifdef DEBUG
-  //   Serial.println("Error starting Wifi");
-  //   #endif
-  // }
+  // Restart Wifi after leaving 'light' sleep
+  if (esp_wifi_start() != ESP_OK){
+    #ifdef DEBUG
+    Serial.println("Error starting Wifi");
+    #endif
+  }
 
-  // // Double check ESP-NOW is configured (repeated for redundency)
-  // if (esp_now_init() != ESP_OK) {
-  //   #ifdef DEBUG
-  //   Serial.println("Error initializing ESP-NOW");
-  //   #endif
-  // }
+  // Double check ESP-NOW is configured (repeated for redundency)
+  if (esp_now_init() != ESP_OK) {
+    #ifdef DEBUG
+    Serial.println("Error initializing ESP-NOW");
+    #endif
+  }
 
   delay(SYS_DELAY);
 
