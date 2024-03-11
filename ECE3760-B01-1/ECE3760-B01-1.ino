@@ -61,12 +61,15 @@
 #define LED_STRIP_PIN  22
 #define LED_NUM_PIXELS 8
 
-#define PWM_FREQUENCY 5000  // 5000Hz frequency
-#define PWM_RESOLUTION   8  // 8 bits of resolution (0-255)
+#define PWM_FREQUENCY  100   // 100Hz frequency
+#define PWM_RESOLUTION 8     // 8 bits of resolution (0-255)
 
-#define WIFI_CHANNEL 0      // Wifi channel used for ESP-NOW
-#define DEFAULT_ID   1      // Default ID for unpaired sweeper devices
-#define MAX_PEERS    3      // Maximum number of allowed peer devices
+#define TEAM_ID 123          // Unique identifier for WiFi-based pairing
+
+#define WIFI_CHANNEL 0       // Wifi channel used for ESP-NOW
+#define DEFAULT_ID   1       // Default ID for unpaired sweeper devices
+#define MAX_PEERS    3       // Maximum number of allowed peer devices
+#define MAC_BYTES    6       // Number of bytes in a MAC address
 
 // Pre-defined Colors
 #define RED       0xFF0000
@@ -81,14 +84,9 @@
 #define UPPER_THRESHOLD 2800
 #define CLEAR_THRESHOLD 900
 
-// #define LEDC_LS_TIMER          LEDC_TIMER_0
-// #define LEDC_LS_MODE           LEDC_LOW_SPEED_MODE
-// #define LEDC_LS_CH2_GPIO       (19)
-// #define LEDC_LS_CH2_CHANNEL    LEDC_CHANNEL_2
-
-// #define LEDC_TEST_CH_NUM       (6)
-// #define LEDC_TEST_DUTY         (4000)
-// #define LEDC_TEST_FADE_TIME    (3000)
+#define LEDC_LS_TIMER LEDC_TIMER_0
+#define LEDC_LS_MODE  LEDC_LOW_SPEED_MODE
+#define LEDC_NUM_CH   6
 
 
 // === STRUCTS & ENUMS ============================================================================
@@ -106,6 +104,7 @@ typedef enum message_type_enum {
 } message_t;
 
 typedef struct esp_now_message_packet_struct {
+  uint8_t team;
   uint8_t type;
   uint8_t id;
   uint8_t leftState;
@@ -113,9 +112,10 @@ typedef struct esp_now_message_packet_struct {
 } data_packet_t;
 
 typedef struct esp_now_paring_packet_struct {
+  uint8_t team;
   uint8_t type;
   uint8_t id;
-  uint8_t macAddr[6];
+  uint8_t macAddr[MAC_BYTES];
   uint8_t channel;
 } pairing_packet_t;
 
@@ -160,85 +160,82 @@ uint8_t broadcastMAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 uint8_t serverMAC[] =    {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 uint8_t boardMAC[] =     {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
-uint8_t peerMACs[MAX_PEERS][6] = {};
+uint8_t peerMACs[MAX_PEERS][MAC_BYTES] = {};
 int numPeers = 0;
 
-// uint8_t hostAddress[] =   {0x40, 0x22, 0xD8, 0xEA, 0x76, 0x30};  // TODO: determine dynamically
-// uint8_t clientAddress[] = {0x40, 0x22, 0xD8, 0xEE, 0x6D, 0xE0};  // TODO: determine dynamically
+// PWM Timer Configuration
+ledc_timer_config_t ledc_timer = {
+  .speed_mode = LEDC_LS_MODE,           // timer mode
+  .duty_resolution = LEDC_TIMER_8_BIT,  // resolution of PWM duty
+  .timer_num = LEDC_LS_TIMER,           // timer index
+  .freq_hz = PWM_FREQUENCY,             // frequency of PWM signal
+  .clk_cfg = LEDC_USE_RTC8M_CLK         // Auto select the source clock
+};
 
-// ledc_timer_config_t ledc_timer = {
-//   .speed_mode = LEDC_LS_MODE,            // timer mode
-//   .duty_resolution = LEDC_TIMER_13_BIT,  // resolution of PWM duty
-//   .timer_num = LEDC_LS_TIMER,            // timer index
-//   .freq_hz = 100,                        // frequency of PWM signal
-//   .clk_cfg = LEDC_USE_RTC8M_CLK          // Auto select the source clock
-// };
-
-// ledc_channel_config_t ledc_channel[LEDC_TEST_CH_NUM] = {
-//   {
-//     .gpio_num   = LEDC_LS_CH2_GPIO,
-//     .speed_mode = LEDC_LS_MODE,
-//     .channel    = LEDC_LS_CH2_CHANNEL,
-//     .timer_sel  = LEDC_LS_TIMER,
-//     .duty       = 0,
-//     .hpoint     = 0,
-//   },
-//   {
-//     .gpio_num   = LEDC_LS_CH2_GPIO,
-//     .speed_mode = LEDC_LS_MODE,
-//     .channel    = LEDC_LS_CH2_CHANNEL,
-//     .timer_sel  = LEDC_LS_TIMER,
-//     .duty       = 0,
-//     .hpoint     = 0,
-//   },
-//   {
-//     .gpio_num   = LEDC_LS_CH2_GPIO,
-//     .speed_mode = LEDC_LS_MODE,
-//     .channel    = LEDC_LS_CH2_CHANNEL,
-//     .timer_sel  = LEDC_LS_TIMER,
-//     .duty       = 0,
-//     .hpoint     = 0,
-//   },
-//   {
-//     .gpio_num   = LEDC_LS_CH2_GPIO,
-//     .speed_mode = LEDC_LS_MODE,
-//     .channel    = LEDC_LS_CH2_CHANNEL,
-//     .timer_sel  = LEDC_LS_TIMER,
-//     .duty       = 0,
-//     .hpoint     = 0,
-//   },
-//   {
-//     .gpio_num   = LEDC_LS_CH2_GPIO,
-//     .speed_mode = LEDC_LS_MODE,
-//     .channel    = LEDC_LS_CH2_CHANNEL,
-//     .timer_sel  = LEDC_LS_TIMER,
-//     .duty       = 0,
-//     .hpoint     = 0,
-//   }, {
-//     .gpio_num   = LEDC_LS_CH2_GPIO,
-//     .speed_mode = LEDC_LS_MODE,
-//     .channel    = LEDC_LS_CH2_CHANNEL,
-//     .timer_sel  = LEDC_LS_TIMER,
-//     .duty       = 0,
-//     .hpoint     = 0,
-//   }
-// };
+// PWM Channel Configuration(s)
+ledc_channel_config_t ledc_channel[LEDC_NUM_CH] = {
+  {
+    .gpio_num   = RGB1_R_PIN,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_CHANNEL_0,
+    .intr_type = LEDC_INTR_DISABLE,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  },
+  {
+    .gpio_num   = RGB1_G_PIN,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_CHANNEL_1,
+    .intr_type = LEDC_INTR_DISABLE,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  },
+  {
+    .gpio_num   = RGB1_B_PIN,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_CHANNEL_2,
+    .intr_type = LEDC_INTR_DISABLE,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  },
+  {
+    .gpio_num   = RGB2_R_PIN,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_CHANNEL_3,
+    .intr_type = LEDC_INTR_DISABLE,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  },
+  {
+    .gpio_num   = RGB2_G_PIN,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_CHANNEL_4,
+    .intr_type = LEDC_INTR_DISABLE,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  }, {
+    .gpio_num   = RGB2_B_PIN,
+    .speed_mode = LEDC_LS_MODE,
+    .channel    = LEDC_CHANNEL_5,
+    .intr_type = LEDC_INTR_DISABLE,
+    .timer_sel  = LEDC_LS_TIMER,
+    .duty       = 0,
+    .hpoint     = 0,
+  }
+};
 
 
 // === MAIN PROGRAM ===============================================================================
 
 void setup() {
 
-  // ledc_timer_config(&ledc_timer);
-
-  // for (int ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-  //   ledc_channel_config(&ledc_channel[ch]);
-  // }
-
-  #ifdef DEBUG
   // Configure Serial Communication
   Serial.begin(BAUD_RATE);
-  #endif
 
   // Configure Wifi
   WiFi.mode(WIFI_MODE_STA);
@@ -261,7 +258,9 @@ void setup() {
   esp_now_register_recv_cb(onRecieve);
 
   // Configure packet structs
+  dataPacket.team = TEAM_ID;
   dataPacket.type = DATA;
+  pairingPacket.team = TEAM_ID;
   pairingPacket.type = PAIRING;
 
   // Configure sleep timer (NOTE: time measured in us not ms)
@@ -280,22 +279,28 @@ void setup() {
   pinMode(JOYSTICK_Y_PIN, INPUT);
   pinMode(JOYSTICK_SW_PIN, INPUT);
 
+  rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
+  
+  // Configure PWM clock
+  ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+  // Configure PWM channels
+  for (int ch = 0; ch < LEDC_NUM_CH; ch++) {
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel[ch]));
+  }
+
   // Configure PWM channels
   configurePWM(rgb1Pins, rgb1Channels, 3);  // configure PWM for RGB LED 1
   configurePWM(rgb2Pins, rgb2Channels, 3);  // configure PWM for RGB LED 2
 
-  // // Register peer (TODO: setup mulitple peers)
-  // peerInfo.channel = 0;  
-  // peerInfo.encrypt = false;
-
-  // // Register first peer (TODO: have 'pairing' process for dynamic connection)
-  // memcpy(peerInfo.peer_addr, clientAddress, 6);
-  // if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-  //   #ifdef DEBUG
-  //   Serial.println("Failed to add peer");
-  //   #endif
-  //   return;
-  // }
+  #ifdef DEBUG
+  Serial.printf("Frequency %u Hz\n", ledc_get_freq(LEDC_LS_MODE, LEDC_LS_TIMER));
+  Serial.printf("Channel 0 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_0));
+  Serial.printf("Channel 1 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_1));
+  Serial.printf("Channel 2 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_2));
+  Serial.printf("Channel 3 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_3));
+  Serial.printf("Channel 4 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_4));
+  Serial.printf("Channel 5 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_5));
+  #endif
 
   // Initialize LED colors
   setPwmRGBA(leftLED,  WHITE, ledBrightness);
@@ -318,7 +323,6 @@ void setup() {
   setStripRGBA(BLUE, ledBrightness);
 
   #endif
-
 }
 
 void loop() {
@@ -509,13 +513,14 @@ void sweepLogic() {
     setStripRGBA(WHITE, ledBrightness);
 
     // Reset 'server' MAC address to be the broadcast address
-    memcpy(&serverMAC, broadcastMAC, sizeof(uint8_t[6]));
+    memcpy(&serverMAC, broadcastMAC, sizeof(uint8_t[MAC_BYTES]));
 
     // Set up pairing packet structure
+    pairingPacket.team = TEAM_ID;
     pairingPacket.type = PAIRING;
     pairingPacket.id = DEFAULT_ID;
     pairingPacket.channel = WIFI_CHANNEL;
-    memcpy(pairingPacket.macAddr, boardMAC, sizeof(uint8_t[6]));
+    memcpy(pairingPacket.macAddr, boardMAC, sizeof(uint8_t[MAC_BYTES]));
 
     // Attempt to pair with skip device
     esp_err_t result = esp_now_send(serverMAC, (uint8_t *) &pairingPacket, sizeof(pairing_packet_t));
@@ -545,16 +550,19 @@ void transmit() {
 }
 
 void onRecieve(const uint8_t* macAddress, const uint8_t* data, int length) {
-  uint8_t type = data[0];  // first message byte is the message 'type'
+  uint8_t team = data[0];  // first byte in message is the 'team'
 
-  #ifdef DEBUG
-  printMAC(macAddress);
-  Serial.println(" (recieved)");
-  Serial.printf(" length: %d\n type: %s\n", length, type == PAIRING ? "PAIRING" : "DATA");
-  #endif
+  if (team == TEAM_ID) {
+    uint8_t type = data[1];  // second byte in message is the 'type'
 
-  // Process packet based on type message type
-  switch (type) {
+    #ifdef DEBUG
+    printMAC(macAddress);
+    Serial.println(" (recieved)");
+    Serial.printf(" length: %d\n type: %s\n", length, type == PAIRING ? "PAIRING" : "DATA");
+    #endif
+
+    // Process packet based on type message type
+    switch (type) {
 
     // Message is of type: PAIRING
     case PAIRING:
@@ -569,50 +577,57 @@ void onRecieve(const uint8_t* macAddress, const uint8_t* data, int length) {
 
       #ifdef SKIP_DEVICE
 
-      // Do not reply to message with the SKIP ID
-      if (pairingPacket.id > 0) {
+        // Do not reply to message with the SKIP ID
+        if (pairingPacket.id > 0) {
 
-        // Configure pairingPacket structure
-        pairingPacket.type = PAIRING;
-        pairingPacket.id = 0;  // Skip ID: 0
-        pairingPacket.channel = WIFI_CHANNEL;
-        memcpy(pairingPacket.macAddr, boardMAC, sizeof(uint8_t[6]));
+          // Configure pairingPacket structure
+          pairingPacket.type = PAIRING;
+          pairingPacket.id = 0;  // Skip ID: 0
+          pairingPacket.channel = WIFI_CHANNEL;
+          memcpy(pairingPacket.macAddr, boardMAC, sizeof(uint8_t[MAC_BYTES]));
 
-        // Add new peer
-        if (addPeer(macAddress)) {
-          // Respond to pairing device
-          esp_err_t result = esp_now_send(macAddress, (uint8_t *) &pairingPacket, sizeof(pairingPacket));
-          #ifdef DEBUG
-          printMAC(macAddress);
-          Serial.println(" (transmit)");
-          Serial.printf(" status: %s\n", result == ESP_OK ? "SUCCESS" : "FAIL");
-          #endif
+          // Add new peer
+          if (addPeer(macAddress)) {
+            // Respond to pairing device
+            esp_err_t result = esp_now_send(macAddress, (uint8_t *) &pairingPacket, sizeof(pairingPacket));
+            #ifdef DEBUG
+            printMAC(macAddress);
+            Serial.println(" (transmit)");
+            Serial.printf(" status: %s\n", result == ESP_OK ? "SUCCESS" : "FAIL");
+            #endif
+          }
         }
-      }
 
-      #else
+        #else
 
-      if (pairingPacket.id == 0) {
-        // Set the skip MAC address
-        memcpy(serverMAC, pairingPacket.macAddr, sizeof(uint8_t[6]));
+        if (pairingPacket.id == 0) {
+          // Set the skip MAC address
+          memcpy(serverMAC, pairingPacket.macAddr, sizeof(uint8_t[MAC_BYTES]));
+          
+          paired = true;
+        }
         
-        paired = true;
-      }
-      
-      #endif
+        #endif
 
-      break;
+        break;
 
-    // Message is a type: DATA
-    case DATA:
-      // Copy packet information to memory
-      memcpy(&dataPacket, data, sizeof(dataPacket));
+      // Message is a type: DATA
+      case DATA:
+        // Copy packet information to memory
+        memcpy(&dataPacket, data, sizeof(dataPacket));
 
-      #ifdef DEBUG
-      Serial.printf(" id: %d\n left: %d\n right: %d\n", dataPacket.id, dataPacket.leftState, dataPacket.rightState);
-      #endif
+        #ifdef DEBUG
+        Serial.printf(" id: %d\n left: %d\n right: %d\n", dataPacket.id, dataPacket.leftState, dataPacket.rightState);
+        #endif
 
-      break;
+        break;
+    }
+  }
+
+  else {
+    #ifdef DEBUG
+    Serial.printf("Ignoring message with team ID: %d\n", team);
+    #endif
   }
 }
 
@@ -674,7 +689,7 @@ bool addPeer(const uint8_t *peerAddress) {
     memset(&peerInfo, 0, sizeof(peerInfo));
     // Setup new peerInfo struct
     const esp_now_peer_info_t *peer = &peerInfo;
-    memcpy(peerInfo.peer_addr, peerAddress, 6);
+    memcpy(peerInfo.peer_addr, peerAddress, sizeof(uint8_t[MAC_BYTES]));
     
     peerInfo.channel = WIFI_CHANNEL;  // set channel
     peerInfo.encrypt = false;         // set encryption
@@ -705,7 +720,7 @@ bool addPeer(const uint8_t *peerAddress) {
           #endif
         }
 
-        memcpy(peerMACs[numPeers], peerAddress, 6);
+        memcpy(peerMACs[numPeers], peerAddress, sizeof(uint8_t[MAC_BYTES]));
         numPeers++;
         return true;
       }
