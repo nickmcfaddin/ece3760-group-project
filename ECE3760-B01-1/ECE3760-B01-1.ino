@@ -1,5 +1,7 @@
 // === COMPILATION "FLAGS" ==========================================================================================================================
 
+// little fs
+
 #define SKIP_DEVICE
 #define DEBUG
 
@@ -178,7 +180,7 @@ ledc_channel_config_t ledc_channel[LEDC_NUM_CH] = {
     .gpio_num   = RGB1_R_PIN,
     .speed_mode = LEDC_LS_MODE,
     .channel    = LEDC_CHANNEL_0,
-    .intr_type = LEDC_INTR_DISABLE,
+    .intr_type  = LEDC_INTR_DISABLE,
     .timer_sel  = LEDC_LS_TIMER,
     .duty       = 0,
     .hpoint     = 0,
@@ -187,7 +189,7 @@ ledc_channel_config_t ledc_channel[LEDC_NUM_CH] = {
     .gpio_num   = RGB1_G_PIN,
     .speed_mode = LEDC_LS_MODE,
     .channel    = LEDC_CHANNEL_1,
-    .intr_type = LEDC_INTR_DISABLE,
+    .intr_type  = LEDC_INTR_DISABLE,
     .timer_sel  = LEDC_LS_TIMER,
     .duty       = 0,
     .hpoint     = 0,
@@ -262,6 +264,8 @@ void setup() {
   dataPacket.type = DATA;
   pairingPacket.team = TEAM_ID;
   pairingPacket.type = PAIRING;
+
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC8M, ESP_PD_OPTION_ON);
 
   // Configure sleep timer (NOTE: time measured in us not ms)
   if (esp_sleep_enable_timer_wakeup(SYS_DELAY * 1000) != ESP_OK) {
@@ -365,7 +369,7 @@ void configurePWM(int* pin, int* channel, int count) {
   for (int i = 0; i < count; i++) {
     ledcSetup(channel[i], PWM_FREQUENCY, PWM_RESOLUTION);
     ledcAttachPin(pin[i], channel[i]);
-  }
+  } // 
 }
 
 // Set the Red (R) Blue (B) Green (G) and Alpha (A) values for a PWM controlled RGB LED
@@ -640,35 +644,35 @@ void onSent(const uint8_t* macAddress, esp_now_send_status_t status) {
 
   #ifdef SKIP_DEVICE
 
-  // // Turn off Wifi before entering 'light' sleep
-  // if (esp_wifi_stop() != ESP_OK) {
-  //   #ifdef DEBUG
-  //   Serial.println("Error stopping Wifi");
-  //   #endif
-  // }
+  // Turn off Wifi before entering 'light' sleep
+  if (esp_wifi_stop() != ESP_OK) {
+    #ifdef DEBUG
+    Serial.println("Error stopping Wifi");
+    #endif
+  }
 
-  // // Enter 'light' sleep for SYS_DELAY duration (ms)
-  // if (esp_light_sleep_start() != ESP_OK){
-  //   #ifdef DEBUG
-  //   Serial.println("Error starting light sleep");
-  //   #endif 
-  // }
+  // Enter 'light' sleep for SYS_DELAY duration (ms)
+  if (esp_light_sleep_start() != ESP_OK){
+    #ifdef DEBUG
+    Serial.println("Error starting light sleep");
+    #endif 
+  }
 
-  // // Restart Wifi after leaving 'light' sleep
-  // if (esp_wifi_start() != ESP_OK){
-  //   #ifdef DEBUG
-  //   Serial.println("Error starting Wifi");
-  //   #endif
-  // }
+  // Restart Wifi after leaving 'light' sleep
+  if (esp_wifi_start() != ESP_OK){
+    #ifdef DEBUG
+    Serial.println("Error starting Wifi");
+    #endif
+  }
 
-  // // Double check ESP-NOW is configured (repeated for redundency)
-  // if (esp_now_init() != ESP_OK) {
-  //   #ifdef DEBUG
-  //   Serial.println("Error initializing ESP-NOW");
-  //   #endif
-  // }
+  // Double check ESP-NOW is configured (repeated for redundency)
+  if (esp_now_init() != ESP_OK) {
+    #ifdef DEBUG
+    Serial.println("Error initializing ESP-NOW");
+    #endif
+  }
 
-  delay(SYS_DELAY);  // TODO: fix PWM and use light-sleep instead
+  // delay(SYS_DELAY);  // TODO: fix PWM and use light-sleep instead
 
   enable = true;  // enable to resume main thread sampling
 
