@@ -257,7 +257,7 @@ void setup() {
 
   // Register callback functions for ESP-NOW
   esp_now_register_send_cb(onSent);
-  esp_now_register_recv_cb(onRecieve);
+  esp_now_register_recv_cb(onRecieve); 
 
   // Configure packet structs
   dataPacket.team = TEAM_ID;
@@ -265,7 +265,8 @@ void setup() {
   pairingPacket.team = TEAM_ID;
   pairingPacket.type = PAIRING;
 
-  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC8M, ESP_PD_OPTION_ON);
+  // Configure RTC8M Clock source to stay awake during light-sleep
+  ESP_ERROR_CHECK(esp_sleep_pd_config(ESP_PD_DOMAIN_RTC8M, ESP_PD_OPTION_ON));
 
   // Configure sleep timer (NOTE: time measured in us not ms)
   if (esp_sleep_enable_timer_wakeup(SYS_DELAY * 1000) != ESP_OK) {
@@ -283,7 +284,7 @@ void setup() {
   pinMode(JOYSTICK_Y_PIN, INPUT);
   pinMode(JOYSTICK_SW_PIN, INPUT);
 
-  rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
+  // rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
   
   // Configure PWM clock
   ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
@@ -644,35 +645,35 @@ void onSent(const uint8_t* macAddress, esp_now_send_status_t status) {
 
   #ifdef SKIP_DEVICE
 
-  // Turn off Wifi before entering 'light' sleep
-  if (esp_wifi_stop() != ESP_OK) {
-    #ifdef DEBUG
-    Serial.println("Error stopping Wifi");
-    #endif
-  }
+  // // Turn off Wifi before entering 'light' sleep
+  // if (esp_wifi_stop() != ESP_OK) {
+  //   #ifdef DEBUG
+  //   Serial.println("Error stopping Wifi");
+  //   #endif
+  // }
 
-  // Enter 'light' sleep for SYS_DELAY duration (ms)
-  if (esp_light_sleep_start() != ESP_OK){
-    #ifdef DEBUG
-    Serial.println("Error starting light sleep");
-    #endif 
-  }
+  // // Enter 'light' sleep for SYS_DELAY duration (ms)
+  // if (esp_light_sleep_start() != ESP_OK){
+  //   #ifdef DEBUG
+  //   Serial.println("Error starting light sleep");
+  //   #endif 
+  // }
 
-  // Restart Wifi after leaving 'light' sleep
-  if (esp_wifi_start() != ESP_OK){
-    #ifdef DEBUG
-    Serial.println("Error starting Wifi");
-    #endif
-  }
+  // // Restart Wifi after leaving 'light' sleep
+  // if (esp_wifi_start() != ESP_OK){
+  //   #ifdef DEBUG
+  //   Serial.println("Error starting Wifi");
+  //   #endif
+  // }
 
-  // Double check ESP-NOW is configured (repeated for redundency)
-  if (esp_now_init() != ESP_OK) {
-    #ifdef DEBUG
-    Serial.println("Error initializing ESP-NOW");
-    #endif
-  }
+  // // Double check ESP-NOW is configured (repeated for redundency)
+  // if (esp_now_init() != ESP_OK) {
+  //   #ifdef DEBUG
+  //   Serial.println("Error initializing ESP-NOW");
+  //   #endif
+  // }
 
-  // delay(SYS_DELAY);  // TODO: fix PWM and use light-sleep instead
+  delay(SYS_DELAY);  // TODO: fix PWM and use light-sleep instead
 
   enable = true;  // enable to resume main thread sampling
 
