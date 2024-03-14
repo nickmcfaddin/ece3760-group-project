@@ -46,7 +46,7 @@
 #define RGB2_G_CHANNEL 4
 #define RGB2_B_CHANNEL 5
 
-#define LED_STRIP_PIN  1
+#define LED_STRIP_PIN  22
 #define LED_NUM_PIXELS 8
 
 #define PWM_FREQUENCY 5000  // 5000Hz frequency
@@ -83,9 +83,9 @@ typedef struct esp_now_packet_struct {
 
 // === GLOBAL VARIABLES ===========================================================================
 
-#ifdef SKIP_DEVICE
-
 float ledBrightness = 0.25;
+
+#ifdef SKIP_DEVICE
 
 bool pbLeft =  false;  // value of 'left'  push button (PB) [digital]
 bool pbRight = false;  // value of 'right' push button (PB) [digital]
