@@ -1,30 +1,17 @@
 // === COMPILATION "FLAGS" ==========================================================================================================================
 
-// little fs
-
-#define SKIP_DEVICE
+// #define SKIP_DEVICE
 #define DEBUG
 
 
 // === INLCUDE STATEMENTS ===========================================================================================================================
 
+// WiFi and ESP-NOW
 #include "WiFi.h"
 #include "esp_now.h"
 #include "esp_wifi.h"
-
-#include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "driver/ledc.h"
-#include "esp_err.h"
-#include "esp_pm.h"
-#include "esp_sleep.h"
-#include "driver/uart.h"
-#include "esp32/rom/uart.h"
-
-#ifndef SKIP_DEVICE
+// Adafruit NeoPixel LEDs
 #include <Adafruit_NeoPixel.h>
-#endif
 
 
 // === DEFINE STATEMENTS ============================================================================================================================
@@ -38,6 +25,7 @@
 #define PB_1_PIN 36
 #define PB_2_PIN 39
 #define PB_3_PIN 32
+#define PB_PAIRING_PIN 22
 
 #define SW_1_PIN 25
 #define SW_2_PIN 26
@@ -82,23 +70,29 @@
 #define PURPLE    0xFF00FF
 #define WHITE     0xFFFFFF
 
-#define LOWER_THRESHOLD 1200
-#define UPPER_THRESHOLD 2800
-#define CLEAR_THRESHOLD 900
-
-#define LEDC_LS_TIMER LEDC_TIMER_0
-#define LEDC_LS_MODE  LEDC_LOW_SPEED_MODE
-#define LEDC_NUM_CH   6
+#define JS_CENTER 2000
+#define THRESHOLD 800
 
 
 // === STRUCTS & ENUMS ============================================================================
 
 typedef enum state_enum {
-  IDLE,
-  CLEAR,
-  SWEEP_LIGHT,
-  SWEEP_HARD
+  STOP,
+  LIGHT,
+  HARD
 } state_t;
+
+typedef enum quadrant_enum {
+  BOTTOM_LEFT,
+  BOTTOM_CENTER,
+  BOTTOM_RIGHT,
+  MIDDLE_LEFT,
+  MIDDLE_CENTER,
+  MIDDLE_RIGHT,
+  TOP_LEFT,
+  TOP_CENTER,
+  TOP_RIGHT
+} quadrant_t;
 
 typedef enum message_type_enum {
   PAIRING,
@@ -124,9 +118,20 @@ typedef struct esp_now_paring_packet_struct {
 
 // === GLOBAL VARIABLES ===========================================================================
 
+// volatile variables (shared between the 2 processor threads)
 volatile bool enable = true;
 volatile bool paired = false;
-float ledBrightness = 0.10;
+
+// Configurable parameters
+float ledBrightness =    0.10;  // [%] must be between 0.0 - 1.0
+float blinkIterval =     0.50;  // [s] decimals after the millisecond position will be ignored
+float pairingPressTime = 2.00;  // [s] decimals after the millisecond position will be ignored
+
+bool pbPairingValue = false;   // value of 'pairing' push button (PB) [digital]
+bool pbPairingState = false;   // value of 'pairing' push button (PB) after debounce
+bool pbPairingLogic = false;   // value of 'pairing' push button (PB) after edge detection
+bool pairingLEDState = false;  // State of the LEDs during pairing mode (for blinking)
+int pairingLastDebounce = 0;   // Last time of debounce occurance for pairing push button (PB)
 
 #ifdef SKIP_DEVICE
 
@@ -147,7 +152,6 @@ int* rightLED = rgb2Channels;  // Aliase for RGB LED right PWM channels
 
 #else
 
-bool pbPower =  false;  // value of 'power' push button (PB) [digital]
 int swPosition = 0;     // value of 'position' switch (SW) [LEFT/RIGHT]
 
 Adafruit_NeoPixel pixels(LED_NUM_PIXELS, LED_STRIP_PIN, NEO_GRB + NEO_KHZ800);
@@ -164,72 +168,6 @@ uint8_t boardMAC[] =     {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
 uint8_t peerMACs[MAX_PEERS][MAC_BYTES] = {};
 int numPeers = 0;
-
-// PWM Timer Configuration
-ledc_timer_config_t ledc_timer = {
-  .speed_mode = LEDC_LS_MODE,           // timer mode
-  .duty_resolution = LEDC_TIMER_8_BIT,  // resolution of PWM duty
-  .timer_num = LEDC_LS_TIMER,           // timer index
-  .freq_hz = PWM_FREQUENCY,             // frequency of PWM signal
-  .clk_cfg = LEDC_USE_RTC8M_CLK         // Auto select the source clock
-};
-
-// PWM Channel Configuration(s)
-ledc_channel_config_t ledc_channel[LEDC_NUM_CH] = {
-  {
-    .gpio_num   = RGB1_R_PIN,
-    .speed_mode = LEDC_LS_MODE,
-    .channel    = LEDC_CHANNEL_0,
-    .intr_type  = LEDC_INTR_DISABLE,
-    .timer_sel  = LEDC_LS_TIMER,
-    .duty       = 0,
-    .hpoint     = 0,
-  },
-  {
-    .gpio_num   = RGB1_G_PIN,
-    .speed_mode = LEDC_LS_MODE,
-    .channel    = LEDC_CHANNEL_1,
-    .intr_type  = LEDC_INTR_DISABLE,
-    .timer_sel  = LEDC_LS_TIMER,
-    .duty       = 0,
-    .hpoint     = 0,
-  },
-  {
-    .gpio_num   = RGB1_B_PIN,
-    .speed_mode = LEDC_LS_MODE,
-    .channel    = LEDC_CHANNEL_2,
-    .intr_type = LEDC_INTR_DISABLE,
-    .timer_sel  = LEDC_LS_TIMER,
-    .duty       = 0,
-    .hpoint     = 0,
-  },
-  {
-    .gpio_num   = RGB2_R_PIN,
-    .speed_mode = LEDC_LS_MODE,
-    .channel    = LEDC_CHANNEL_3,
-    .intr_type = LEDC_INTR_DISABLE,
-    .timer_sel  = LEDC_LS_TIMER,
-    .duty       = 0,
-    .hpoint     = 0,
-  },
-  {
-    .gpio_num   = RGB2_G_PIN,
-    .speed_mode = LEDC_LS_MODE,
-    .channel    = LEDC_CHANNEL_4,
-    .intr_type = LEDC_INTR_DISABLE,
-    .timer_sel  = LEDC_LS_TIMER,
-    .duty       = 0,
-    .hpoint     = 0,
-  }, {
-    .gpio_num   = RGB2_B_PIN,
-    .speed_mode = LEDC_LS_MODE,
-    .channel    = LEDC_CHANNEL_5,
-    .intr_type = LEDC_INTR_DISABLE,
-    .timer_sel  = LEDC_LS_TIMER,
-    .duty       = 0,
-    .hpoint     = 0,
-  }
-};
 
 
 // === MAIN PROGRAM ===============================================================================
@@ -265,9 +203,6 @@ void setup() {
   pairingPacket.team = TEAM_ID;
   pairingPacket.type = PAIRING;
 
-  // Configure RTC8M Clock source to stay awake during light-sleep
-  ESP_ERROR_CHECK(esp_sleep_pd_config(ESP_PD_DOMAIN_RTC8M, ESP_PD_OPTION_ON));
-
   // Configure sleep timer (NOTE: time measured in us not ms)
   if (esp_sleep_enable_timer_wakeup(SYS_DELAY * 1000) != ESP_OK) {
     #ifdef DEBUG
@@ -282,34 +217,16 @@ void setup() {
   pinMode(PB_2_PIN, INPUT);
   pinMode(JOYSTICK_X_PIN, INPUT);
   pinMode(JOYSTICK_Y_PIN, INPUT);
-  pinMode(JOYSTICK_SW_PIN, INPUT);
-
-  // rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
-  
-  // Configure PWM clock
-  ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
-  // Configure PWM channels
-  for (int ch = 0; ch < LEDC_NUM_CH; ch++) {
-    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel[ch]));
-  }
+  // pinMode(JOYSTICK_SW_PIN, INPUT);  // TODO: sort out how to read this value
+  pinMode(PB_PAIRING_PIN, INPUT);
 
   // Configure PWM channels
   configurePWM(rgb1Pins, rgb1Channels, 3);  // configure PWM for RGB LED 1
   configurePWM(rgb2Pins, rgb2Channels, 3);  // configure PWM for RGB LED 2
 
-  #ifdef DEBUG
-  Serial.printf("Frequency %u Hz\n", ledc_get_freq(LEDC_LS_MODE, LEDC_LS_TIMER));
-  Serial.printf("Channel 0 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_0));
-  Serial.printf("Channel 1 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_1));
-  Serial.printf("Channel 2 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_2));
-  Serial.printf("Channel 3 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_3));
-  Serial.printf("Channel 4 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_4));
-  Serial.printf("Channel 5 Duty Cycle %u\n", ledc_get_duty(LEDC_LS_MODE, LEDC_CHANNEL_5));
-  #endif
-
   // Initialize LED colors
-  setPwmRGBA(leftLED,  WHITE, ledBrightness);
-  setPwmRGBA(rightLED, WHITE, ledBrightness);
+  setPwmRGBA(leftLED,  RED, ledBrightness);
+  setPwmRGBA(rightLED, RED, ledBrightness);
 
   #else
 
@@ -325,7 +242,7 @@ void setup() {
   pixels.begin();
 
   // Initialize LED colors
-  setStripRGBA(BLUE, ledBrightness);
+  setStripRGBA(RED, ledBrightness);
 
   #endif
 }
@@ -338,12 +255,25 @@ void loop() {
     // 1. Update push button (PB) values
     pbLeft = digitalRead(PB_1_PIN);
     pbRight = digitalRead(PB_2_PIN);
+
+    bool pbPairingValueNext = digitalRead(PB_PAIRING_PIN);
+    bool pbPairingStateNext = debounce(pbPairingValue, pbPairingValueNext, pbPairingState, &pairingLastDebounce);
+    bool pbPairingLogicNext = edgeDetection(pbPairingState, pbPairingStateNext, pbPairingLogic);
+
+    pbPairingValue = pbPairingValueNext;
+    pbPairingState = pbPairingStateNext;
+    pbPairingLogic = pbPairingLogicNext;
     
     // 2. Update joystick (JS) values
     jsX = analogRead(JOYSTICK_X_PIN);
     jsY = analogRead(JOYSTICK_Y_PIN);
 
-    jsSW = digitalRead(JOYSTICK_SW_PIN);
+    // jsSW = analogRead(JOYSTICK_SW_PIN);  // TODO: not enough range to read digitally, switch to analog pin
+
+    #ifdef DEBUG
+    serialPlot(jsX, "X", false);
+    serialPlot(jsY, "Y", true);
+    #endif
 
     // 3. Perform Skip Logic
     skipLogic();
@@ -351,10 +281,16 @@ void loop() {
     #else
 
     // 1. Update push button (PB) values
-    pbPower = digitalRead(PB_3_PIN);
+    bool pbPairingValueNext = digitalRead(PB_3_PIN);
+    bool pbPairingStateNext = debounce(pbPairingValue, pbPairingValueNext, pbPairingState, &pairingLastDebounce);
+    bool pbPairingLogicNext = edgeDetection(pbPairingState, pbPairingStateNext, pbPairingLogic);
+
+    pbPairingValue = pbPairingValueNext;
+    pbPairingState = pbPairingStateNext;
+    pbPairingLogic = pbPairingLogicNext;
 
     // 2. Update switch (SW) value
-    swPosition = digitalRead(SW_1_PIN) ? LEFT : RIGHT;  // ASSUMPTION: anything not 'left'
+    swPosition = digitalRead(SW_1_PIN) ? LEFT : RIGHT;  // ASSUMPTION: anything not 'left' is 'RIGHT'
 
     // 3. Perform Sweep Logic
     sweepLogic();
@@ -370,7 +306,7 @@ void configurePWM(int* pin, int* channel, int count) {
   for (int i = 0; i < count; i++) {
     ledcSetup(channel[i], PWM_FREQUENCY, PWM_RESOLUTION);
     ledcAttachPin(pin[i], channel[i]);
-  } // 
+  }
 }
 
 // Set the Red (R) Blue (B) Green (G) and Alpha (A) values for a PWM controlled RGB LED
@@ -394,6 +330,76 @@ void setStripRGBA(int rgb, float alpha) {
 #endif
 }
 
+bool debounce(bool last, bool current, bool state, int* lastDebounce) {
+
+  // Check for 'noise'
+  if (current != last) {
+    // Reset debounce timer
+    *lastDebounce = millis();
+  }
+
+  // 
+  if ((millis() - *lastDebounce) > (int)(pairingPressTime * 1000)) {
+    if (state != current)
+    return current;
+  } else {
+    return state;
+  }
+}
+
+bool edgeDetection(bool previous, bool current, bool logic) {
+  // Check if the current button state is HIGH and the previous buttons state was LOW (rising edge detection)
+  if (current && !previous) {
+    // Toggle the current logical state.
+    return !logic;
+  } else {
+    // No change in logical state
+    return logic;
+  }
+}
+
+int parseQuadrant(int xPos, int yPos) {
+  int quadrant = -1;
+
+  // Determine row (yPos)
+  if (yPos > (JS_CENTER + THRESHOLD)) {
+    // Top Row
+    quadrant = 6;
+  }  
+  else if (yPos < (JS_CENTER - THRESHOLD)) {
+    // Bottom Row
+    quadrant = 0;
+  }
+  else {
+    // Middle Row
+    quadrant = 3;
+  }
+
+  // Determine column (xPos)
+  if (xPos > (JS_CENTER + THRESHOLD)) {
+    // Left Column
+    quadrant += 2;
+  }
+  else if (xPos < (JS_CENTER - THRESHOLD)) {
+    // Right Column
+    quadrant += 0;
+  }
+  else {
+    // Center Column
+    quadrant += 1;
+  }
+
+  return quadrant;
+}
+
+void serialPlot(int value, char* label, bool end) {
+  Serial.printf("%s:%d", label, value);
+  Serial.print(",");
+  if (end) {
+    Serial.print("\n");
+  }
+}
+
 
 // === LOGIC FUNCTIONS ==============================================================================================================================
 
@@ -404,63 +410,87 @@ void skipLogic() {
   // Check if there are any connected peers
   if (numPeers > 0) {
 
-    // 1. Check for LEFT joystick position
-    if (jsX < LOWER_THRESHOLD - CLEAR_THRESHOLD) {
-      setPwmRGBA(leftLED, BLUE, ledBrightness);       // set left LED 'blue'
-      dataPacket.leftState = IDLE;                    // update left state
+    // 1. Determine joystick quadrant
+    int quadrant = parseQuadrant(jsX, jsY);
 
-    // 2. Check for RIGHT joystick position
-    } else if (jsX > UPPER_THRESHOLD + CLEAR_THRESHOLD) {
-      setPwmRGBA(rightLED, BLUE, ledBrightness);      // set left LED 'blue'
-      dataPacket.rightState = IDLE;                   // update right state
+    #ifdef DEBUG
+    Serial.printf("Joystick Position: %d\n", quadrant);
+    #endif
 
-    } else {
+    // 2. Execute joystick command
+    switch (quadrant) {
+      case BOTTOM_LEFT:
+        setPwmRGBA(leftLED, BLUE, ledBrightness);    // set left LED 'blue'
+        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        dataPacket.leftState = LIGHT;                // update left state
+        dataPacket.rightState = STOP;                // update right state
+        break;
+      case BOTTOM_CENTER:
+        setPwmRGBA(leftLED, BLUE, ledBrightness);    // set left LED 'blue'
+        setPwmRGBA(rightLED, BLUE, ledBrightness);   // set right LED 'blue'
+        dataPacket.leftState = LIGHT;                // update left state
+        dataPacket.rightState = LIGHT;               // update right state
+        break;
+      case BOTTOM_RIGHT:
+        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
+        setPwmRGBA(rightLED, BLUE, ledBrightness);   // set right LED 'blue'
+        dataPacket.leftState = STOP;                 // update left state
+        dataPacket.rightState = LIGHT;               // update right state
+        break;
+      case MIDDLE_LEFT:
+        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
+        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        dataPacket.leftState = STOP;                 // update left state
+        dataPacket.rightState = STOP;                // update right state
+        break;
+      case MIDDLE_CENTER:
+        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
+        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        dataPacket.leftState = STOP;                 // update left state
+        dataPacket.rightState = STOP;                // update right state
+        break;
+      case MIDDLE_RIGHT:
+        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
+        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        dataPacket.leftState = STOP;                 // update left state
+        dataPacket.rightState = STOP;                // update right state
+        break;
+      case TOP_LEFT:
+        setPwmRGBA(leftLED, GREEN, ledBrightness);   // set left LED 'green'
+        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        dataPacket.leftState = HARD;                 // update left state
+        dataPacket.rightState = STOP;                // update right state
+        break;
+      case TOP_CENTER:
+        setPwmRGBA(leftLED, GREEN, ledBrightness);   // set left LED 'green'
+        setPwmRGBA(rightLED, GREEN, ledBrightness);  // set right LED 'green'
+        dataPacket.leftState = HARD;                 // update left state
+        dataPacket.rightState = HARD;                // update right state
+        break;
+      case TOP_RIGHT:
+        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
+        setPwmRGBA(rightLED, GREEN, ledBrightness);  // set right LED 'green'
+        dataPacket.leftState = STOP;                 // update left state
+        dataPacket.rightState = HARD;                // update right state
+        break;
+    }
 
-      // 3. Check for LEFT button press
-      if (pbLeft) {
-        if (jsY < LOWER_THRESHOLD) {
-          setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
-          dataPacket.leftState = SWEEP_LIGHT;          // update left state
-        } else if (jsY > UPPER_THRESHOLD) {
-          setPwmRGBA(leftLED, GREEN, ledBrightness);   // set left LED 'green'
-          dataPacket.leftState = SWEEP_HARD;           // update left state
-        } else {
-          setPwmRGBA(leftLED, BLUE, ledBrightness);    // set left LED 'blue'
-          dataPacket.leftState = CLEAR;                // update left state
+    // 3. Check for pairing push button (PB)
+    if (pbPairingLogic) {
+      // Set both LEDs to 'white'
+      setPwmRGBA(leftLED, WHITE, ledBrightness);
+      setPwmRGBA(rightLED, WHITE, ledBrightness);
+
+      // Enter pairing mode
+      for (int i = 0; i < numPeers; i++) {
+        // Remove registered peers
+        if (esp_now_del_peer(peerMACs[i]) != ESP_OK) {
+          #ifdef DEBUG
+          Serial.println("Error removing ESP-NOW peer");
+          #endif
         }
       }
-
-      // 4. Check for RIGHT button press
-      if (pbRight) {
-        if (jsY < LOWER_THRESHOLD) {
-          setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
-          dataPacket.rightState = SWEEP_LIGHT;         // update right state
-        } else if (jsY > UPPER_THRESHOLD) {
-          setPwmRGBA(rightLED, GREEN, ledBrightness);  // set right LED 'green'
-          dataPacket.rightState = SWEEP_HARD;          // update right state
-        } else {
-          setPwmRGBA(rightLED, BLUE, ledBrightness);   // set right LED 'blue'
-          dataPacket.rightState = CLEAR;               // update right state
-        }
-      }
-
-      // 5. Check for joystick switch (SW) press
-      if (jsSW) {
-        // Set both LEDs to 'white'
-        setPwmRGBA(leftLED, WHITE, ledBrightness);
-        setPwmRGBA(rightLED, WHITE, ledBrightness);
-
-        // Enter pairing mode
-        for (int i = 0; i < numPeers; i++) {
-          // Remove registered peers
-          if (esp_now_del_peer(peerMACs[i]) != ESP_OK) {
-            #ifdef DEBUG
-            Serial.println("Error removing ESP-NOW peer");
-            #endif
-          }
-        }
-        numPeers = 0;   // reset number of peers
-      }
+      numPeers = 0;   // reset number of peers
     }
 
     enable = false;  // disable main thread sampling until ACK is recieved
@@ -471,6 +501,9 @@ void skipLogic() {
     #ifdef DEBUG
     Serial.println("Waiting for peers to connect");
     #endif
+
+    setPwmRGBA(leftLED, WHITE, ledBrightness);
+    setPwmRGBA(rightLED, WHITE, ledBrightness);
 
     // Delay to reduce the workload/power consumption
     delay(SYS_DELAY);
@@ -489,25 +522,22 @@ void sweepLogic() {
 
     // 2. Determine which 'state' to set the LEDs
     switch (currentState) {
-      case IDLE:
-        setStripRGBA(BLUE, ledBrightness);   // set LEDs 'blue'
-        break;
-      case CLEAR:
-        setStripRGBA(BLUE, ledBrightness);   // set LEDs 'blue'
-        break;
-      case SWEEP_LIGHT:
+      case STOP:
         setStripRGBA(RED, ledBrightness);    // set LEDs 'red'
         break;
-      case SWEEP_HARD:
+      case LIGHT:
+        setStripRGBA(BLUE, ledBrightness);   // set LEDs 'blue'
+        break;
+      case HARD:
         setStripRGBA(GREEN, ledBrightness);  // set LEDs 'green'
         break;
     }
 
-    // 3. Check for power button pushed
-    if (pbPower) {
+    // 3. Check for pairing button pushed
+    if (pbPairingLogic) {
       // Clear last recieved state
-      dataPacket.leftState = IDLE;
-      dataPacket.rightState = IDLE;
+      dataPacket.leftState = STOP;
+      dataPacket.rightState = STOP;
       // Enter 'pairing' mode
       paired = false;
     }
@@ -533,7 +563,7 @@ void sweepLogic() {
     #ifdef DEBUG
     printMAC(serverMAC);
     Serial.println(" (transmit)");
-    Serial.printf(" status: %s%s%s%s\n", result == ESP_OK ? "ESP_OK" : "", result == ESP_ERR_ESPNOW_NOT_INIT  ? "ESP_ERR_ESPNOW_NOT_INIT " : "", result == ESP_ERR_ESPNOW_ARG  ? "ESP_ERR_ESPNOW_ARG " : "", result == ESP_ERR_ESPNOW_NOT_FOUND  ? "ESP_ERR_ESPNOW_NOT_FOUND " : "");
+    Serial.printf(" status: %s\n", result == ESP_OK ? "SUCCESS" : "FAIL");
     #endif
   }
 
@@ -595,11 +625,19 @@ void onRecieve(const uint8_t* macAddress, const uint8_t* data, int length) {
           if (addPeer(macAddress)) {
             // Respond to pairing device
             esp_err_t result = esp_now_send(macAddress, (uint8_t *) &pairingPacket, sizeof(pairingPacket));
+
             #ifdef DEBUG
             printMAC(macAddress);
             Serial.println(" (transmit)");
             Serial.printf(" status: %s\n", result == ESP_OK ? "SUCCESS" : "FAIL");
             #endif
+
+            // Reset pairing push button (PB) parameters
+            pbPairingValue = false;
+            pbPairingState = false;
+            pbPairingLogic = false;
+            pairingLEDState = false;
+            pairingLastDebounce = 0;
           }
         }
 
@@ -610,6 +648,13 @@ void onRecieve(const uint8_t* macAddress, const uint8_t* data, int length) {
           memcpy(serverMAC, pairingPacket.macAddr, sizeof(uint8_t[MAC_BYTES]));
           
           paired = true;
+
+          // Reset pairing push button (PB) parameters
+          pbPairingValue = false;
+          pbPairingState = false;
+          pbPairingLogic = false;
+          pairingLEDState = false;
+          pairingLastDebounce = 0;
         }
         
         #endif
@@ -645,35 +690,7 @@ void onSent(const uint8_t* macAddress, esp_now_send_status_t status) {
 
   #ifdef SKIP_DEVICE
 
-  // // Turn off Wifi before entering 'light' sleep
-  // if (esp_wifi_stop() != ESP_OK) {
-  //   #ifdef DEBUG
-  //   Serial.println("Error stopping Wifi");
-  //   #endif
-  // }
-
-  // // Enter 'light' sleep for SYS_DELAY duration (ms)
-  // if (esp_light_sleep_start() != ESP_OK){
-  //   #ifdef DEBUG
-  //   Serial.println("Error starting light sleep");
-  //   #endif 
-  // }
-
-  // // Restart Wifi after leaving 'light' sleep
-  // if (esp_wifi_start() != ESP_OK){
-  //   #ifdef DEBUG
-  //   Serial.println("Error starting Wifi");
-  //   #endif
-  // }
-
-  // // Double check ESP-NOW is configured (repeated for redundency)
-  // if (esp_now_init() != ESP_OK) {
-  //   #ifdef DEBUG
-  //   Serial.println("Error initializing ESP-NOW");
-  //   #endif
-  // }
-
-  delay(SYS_DELAY);  // TODO: fix PWM and use light-sleep instead
+  lightSleep();   // put processor into light sleep
 
   enable = true;  // enable to resume main thread sampling
 
@@ -717,11 +734,11 @@ bool addPeer(const uint8_t *peerAddress) {
         // If first connected peer -> toggle LEDs
         if (numPeers == 0) {
           // Clear last recieved state
-          dataPacket.leftState = IDLE;
-          dataPacket.rightState = IDLE;
+          dataPacket.leftState = STOP;
+          dataPacket.rightState = STOP;
           #ifdef SKIP_DEVICE
-          setPwmRGBA(leftLED,  BLUE, ledBrightness);
-          setPwmRGBA(rightLED, BLUE, ledBrightness);
+          setPwmRGBA(leftLED,  RED, ledBrightness);
+          setPwmRGBA(rightLED, RED, ledBrightness);
           #endif
         }
 
@@ -744,5 +761,38 @@ bool addPeer(const uint8_t *peerAddress) {
     Serial.println("Add Peer: MAX REACHED");
     #endif
     return false;
+  }
+}
+
+
+// === PROCESSOR FUNCTIONS ========================================================================
+
+void lightSleep() {
+  // Turn off Wifi before entering 'light' sleep
+  if (esp_wifi_stop() != ESP_OK) {
+    #ifdef DEBUG
+    Serial.println("Error stopping Wifi");
+    #endif
+  }
+
+  // Enter 'light' sleep for SYS_DELAY duration (ms)
+  if (esp_light_sleep_start() != ESP_OK){
+    #ifdef DEBUG
+    Serial.println("Error starting light sleep");
+    #endif 
+  }
+
+  // Restart Wifi after leaving 'light' sleep
+  if (esp_wifi_start() != ESP_OK){
+    #ifdef DEBUG
+    Serial.println("Error starting Wifi");
+    #endif
+  }
+
+  // Double check ESP-NOW is configured (repeated for redundency)
+  if (esp_now_init() != ESP_OK) {
+    #ifdef DEBUG
+    Serial.println("Error initializing ESP-NOW");
+    #endif
   }
 }
