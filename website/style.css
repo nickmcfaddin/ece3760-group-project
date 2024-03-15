@@ -3,6 +3,19 @@ body {
   font-family: sans-serif;
 }
 
-.page {
+.navbar {
+  font-size: 20px;
+}
 
+.navbar-item {
+
+}
+
+.page {
+  position: fixed;     /* allows all page elements to 'overlap' */
+  visibility: hidden;  /* page is hidden by default, until selected */
+}
+
+.page:target {
+  visibility: visible;
 }
