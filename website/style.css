@@ -1,21 +1,77 @@
+/* General Website Styling ===================================================================== */
 
 body {
   font-family: sans-serif;
+  font-size: 20px;
+
+  margin: 0;                /* remove default margin */
+
+  overflow-y: scroll;       /* allow content to scroll vertically */
 }
 
+.horizontal-container {
+  width: 100%;
+
+  display: flex;             /* flex-box (for better control of inner element placement) */
+  flex-direction: row;       /* align inner content horizontally (ie. single row) */
+}
+
+.vertical-container {
+  width: 100%;
+
+  display: flex;             /* flex-box (for better control of inner element placement) */
+  flex-direction: column;    /* align inner content vertically (ie. single column) */
+}
+
+.flex-content-centered {
+  justify-content: center;   /* main axis alignment */
+  align-items: center;       /* cross axis alignment */
+}
+
+/* Navigation Bar Styling ====================================================================== */
+
 .navbar {
-  font-size: 20px;
+  position: absolute;
+
+  width: 100%;              /* width: full length of page */
+  height: 3em;              /* height: 3x font height */
+
+  z-index: 1;               /* bring navigation bar to the fore-ground so its always on top of page content */
 }
 
 .navbar-item {
+  height: 1em;               /* height: x1 font height (ie. match contents) */
+  margin: auto 0.5em;        /* vertical auto (centered) and horizontal 0.5em spacing */
 
 }
 
+.logo {
+  width: 2.5em;              /* width: x2.5 font height (relative to parent) */
+  height: 2.5em;             /* height: x2.5 font height (relative to parent) */
+  margin: auto 0.25em;       /* vertical auto (centered) and horizontal 0.25em spacing */
+}
+
+/* Page Styling ================================================================================ */
+
 .page {
-  position: fixed;     /* allows all page elements to 'overlap' */
-  visibility: hidden;  /* page is hidden by default, until selected */
+  background-size: cover;
+
+  width: 100%;               /* width: full length of page */
+  height: calc(100% - 3em);  /* height: full height of page */
+  padding-top: 3em;          /* top offset to account for navigation bar */
+
+  position: absolute;        /* allows all page elements to 'overlap' */
+  visibility: hidden;        /* page is hidden by default, until selected */
 }
 
 .page:target {
-  visibility: visible;
+  visibility: visible;       /* makes page visible when selected */
+}
+
+#product-intro {
+  width: 50%;
+}
+
+#sweeper-assembly-view {
+  width: 50%;
 }
