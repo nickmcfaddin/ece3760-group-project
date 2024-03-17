@@ -4,28 +4,13 @@ body {
   font-family: sans-serif;
   font-size: 20px;
 
-  margin: 0;                /* remove default margin */
+  margin: 0;                 /* remove default margin */
 
-  overflow-y: scroll;       /* allow content to scroll vertically */
+  overflow-y: scroll;        /* allow content to scroll vertically */
 }
 
-.horizontal-container {
-  width: 100%;
-
-  display: flex;             /* flex-box (for better control of inner element placement) */
-  flex-direction: row;       /* align inner content horizontally (ie. single row) */
-}
-
-.vertical-container {
-  width: 100%;
-
-  display: flex;             /* flex-box (for better control of inner element placement) */
-  flex-direction: column;    /* align inner content vertically (ie. single column) */
-}
-
-.flex-content-centered {
-  justify-content: center;   /* main axis alignment */
-  align-items: center;       /* cross axis alignment */
+li {
+  margin: 0.5em 0;            /* add spacing between list items */
 }
 
 /* Navigation Bar Styling ====================================================================== */
@@ -33,16 +18,24 @@ body {
 .navbar {
   position: absolute;
 
-  width: 100%;              /* width: full length of page */
-  height: 3em;              /* height: 3x font height */
+  width: 100%;               /* width: full length of visible window */
+  height: 3em;               /* height: 3x font height */
 
-  z-index: 1;               /* bring navigation bar to the fore-ground so its always on top of page content */
+  z-index: 1;                /* bring navigation bar to the fore-ground so its always on top of page content */
 }
 
 .navbar-item {
   height: 1em;               /* height: x1 font height (ie. match contents) */
   margin: auto 0.5em;        /* vertical auto (centered) and horizontal 0.5em spacing */
 
+  text-decoration: none;     /* remove default link underline */
+  font-weight: bold;
+  color: darkgrey;
+  font-size: 1.25em;
+}
+
+.navbar-item:hover {
+  color: black;
 }
 
 .logo {
@@ -54,10 +47,8 @@ body {
 /* Page Styling ================================================================================ */
 
 .page {
-  background-size: cover;
-
-  width: 100%;               /* width: full length of page */
-  height: calc(100% - 3em);  /* height: full height of page */
+  width: 100%;               /* width: full length of visible window */
+  /*height: calc(100% - 3em);  !* height: full height of visible window *!*/
   padding-top: 3em;          /* top offset to account for navigation bar */
 
   position: absolute;        /* allows all page elements to 'overlap' */
@@ -68,10 +59,42 @@ body {
   visibility: visible;       /* makes page visible when selected */
 }
 
-#product-intro {
-  width: 50%;
+.horizontal-container {
+  width: 100%;               /* default width is full page unless overwritten */
+
+  display: flex;             /* flex-box (for better control of inner element placement) */
+  flex-direction: row;       /* align inner content horizontally (ie. single row) */
 }
 
-#sweeper-assembly-view {
-  width: 50%;
+.vertical-container {
+  width: 100%;               /* default width is full page unless overwritten */
+
+  display: flex;             /* flex-box (for better control of inner element placement) */
+  flex-direction: column;    /* align inner content vertically (ie. single column) */
+}
+
+.content-centered {
+  justify-content: center;   /* main axis alignment */
+  align-items: center;       /* cross axis alignment */
+}
+
+.width-half {
+  width: 50vw;               /* set container width to half the screen width */
+}
+
+.content-image {
+  margin: auto;              /* center image */
+  max-width: 75%;            /* set max width to 75% (effectively adding minimum 12.5% horizontal margins) */
+}
+
+.wide-image {
+  margin: 20% auto;          /* extra top/bottom margins to extend height & center image */
+}
+
+.half-page {
+  height: 50vh;             /* fill half of page height */
+}
+
+.full-page {
+  height: 100vh;             /* fill entire page height */
 }
