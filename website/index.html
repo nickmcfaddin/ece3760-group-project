@@ -5,47 +5,166 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Website</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
   </head>
   <body>
 
     <!-- Navigation Bar -->
     <div class="navbar horizontal-container">
-      <img class="logo" src="assets/logo.png" />
-      <a class="navbar-item" href="#product">PRODUCT</a>
+      <img class="logo" src="assets/logo.png" alt=""/>
+      <a class="navbar-item" href="#home">HOME</a>
+      <a class="navbar-item" href="#vision">VISION</a>
       <a class="navbar-item" href="#design">DESIGN</a>
+      <a class="navbar-item" href="#product">PRODUCT</a>
       <a class="navbar-item" href="#cost">COST</a>
       <a class="navbar-item" href="#team">TEAM</a>
     </div>
     <!-- Home Page -->
-    <div class="page" id="product">
-      <div class="horizontal-container">
-        <div id="product-intro" class="vertical-container flex-content-centered">
-          <h1>
-            Product Name
-          </h1>
-          <p style="padding: 0 2em;">
-            Designed for the deaf curler, [product name] allows for fast, reliable, and intuitive communication between sweeper and skip
-          </p>
-        </div>
-        <img id="sweeper-assembly-view" src="assets/sweeper-assembly-view.png" />
+    <div class="page" id="home">
+      <h1>Home Page</h1>
+      <p>This is the <b>HOME</b> page.</p>
+    </div>
+    <!-- Vision Page -->
+    <div class="page" id="vision">
+      <!-- Vision Statement -->
+      <div class="vertical-container content-centered">
+        <h1>
+          Vision Statement
+        </h1>
+        <p>
+          Our aim is to facilitate non-auditory communication between skip and sweepers that is <b>fast</b>, <b>reliable</b>, and <b>affordable</b> helping to <i>level the playing field</i> for deaf curlers.
+        </p>
       </div>
-      <div class="vertical-container flex-content-centered">
-        <h1>Our product</h1>
-        <p>Information about our product</p>
+      <!-- Design Criteria -->
+      <div class="vertical-container content-centered">
+        <h1>
+          Design Criteria
+        </h1>
+        <ul>
+          <li>Non-auditory signals</li>
+          <li>Fast communication</li>
+          <li>Intuitive use</li>
+          <li>Non-invasive design</li>
+          <li>Durable structure</li>
+          <li>Affordable product</li>
+        </ul>
       </div>
     </div>
     <!-- Design Page -->
     <div class="page" id="design">
-      <h1>Design Page</h1>
-      <p>This is the <b>DESIGN</b> page.</p>
+      <!-- Design Process -->
+      <div class="vertical-container content-centered half-page">
+        <h1>
+          Our Design Process
+        </h1>
+        <ol>
+          <li>Criteria & empathic design</li>
+          <li>Brainstorming and problem solving</li>
+          <li>Initial proof-of-concept prototype</li>
+          <li>Physical prototype design</li>
+          <li>Feedback and design iteration</li>
+        </ol>
+      </div>
+      <!-- Controller UI Diagram -->
+      <div class="horizontal-container full-page">
+        <div class="vertical-container content-centered width-half">
+          <h1>
+            Controller UI Design
+          </h1>
+          <ol>
+            <li>Joystick control of receiver devices</li>
+            <li>LED indicators for visual feedback to the skip</li>
+            <li>Buttons (to be removed)</li>
+            <li>Mounting point for hand strap</li>
+            <li>Removable battery cover for convenient and quick access</li>
+          </ol>
+        </div>
+        <div class="vertical-container content-centered width-half">
+          <img class="content-image" src="assets/skip-ui-diagram.png" alt=""/>
+        </div>
+      </div>
+      <!-- Receiver UI Diagram -->
+      <div class="horizontal-container full-page">
+        <div class="vertical-container content-centered width-half">
+          <img class="content-image wide-image" src="assets/sweeper-ui-diagram.png" alt=""/>
+        </div>
+        <div class="vertical-container content-centered width-half">
+          <h1>
+            Receiver UI Design
+          </h1>
+          <ol>
+            <li>LED indicators for visual communication of commands</li>
+            <li>Toggle switch to select LEFT/RIGHT side</li>
+            <li>Power/pairing button</li>
+            <li>Broom clap tightener to secure device in place</li>
+            <li>Adjustable hinge for custom mounting angle</li>
+            <li>Removable battery cover for convenient and quick access</li>
+          </ol>
+        </div>
+      </div>
+      <!-- Statechart Diagrams -->
+      <div class="vertical-container content-centered">
+        <h1>
+          Statechart Diagrams
+        </h1>
+      </div>
+      <div class="horizontal-container full-page">
+        <div class="vertical-container content-centered width-half">
+          <h2>
+            Controller
+          </h2>
+          <img class="content-image" src="assets/skip-statechart.jpg" alt=""/>
+        </div>
+        <div class="vertical-container content-centered width-half">
+          <h2>
+            Receiver
+          </h2>
+          <img class="content-image" src="assets/sweeper-statechart.jpg" alt=""/>
+        </div>
+      </div>
+      <!-- Control Schemes -->
+      <div class="vertical-container content-centered">
+        <h1>
+          Control Schemes
+        </h1>
+      </div>
+      <div class="horizontal-container full-page">
+        <div class="vertical-container content-centered width-half">
+          <h2>
+            Controller
+          </h2>
+          <img class="content-image" src="assets/controls-diagram.png" alt=""/>
+        </div>
+        <div class="vertical-container content-centered width-half">
+          <h2>
+            Receiver
+          </h2>
+          <img class="content-image" src="assets/controls-diagram.png" alt=""/>
+        </div>
+      </div>
+    </div>
+    <!-- Product Page -->
+    <div class="page" id="product">
+      <div class="horizontal-container full-page">
+        <div class="vertical-container content-centered width-half">
+          <h1>
+            Our Product
+          </h1>
+          <p style="padding: 0 2em;">
+            Details about our product
+          </p>
+        </div>
+        <div class="vertical-container content centered width-half">
+          <img class="content-image" src="assets/sweeper-assembly-view.png" alt=""/>
+        </div>
+      </div>
     </div>
     <!-- Cost Page -->
     <div class="page" id="cost">
       <h1>Cost Page</h1>
       <p>This is the <b>COST</b> page.</p>
     </div>
-    <!-- About Page -->
+    <!-- Team Page -->
     <div class="page" id="team">
       <h1>Team Page</h1>
       <p>This is the <b>TEAM</b> page.</p>
