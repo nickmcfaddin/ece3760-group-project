@@ -125,7 +125,7 @@ int jsX =  0;          // value of 'x' joystick (JS) position [analog]
 int jsY =  0;          // value of 'y' joystick (JS) position [analog]
 int jsSW = 0;          // value of joystick (JS) 'switch'     [analog]
 
-Adafruit_NeoPixel pixels(1, LED_LEFT_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixelLeft(1, LED_LEFT_PIN, NEO_GRB + NEO_KHZ800), pixelRight(1, LED_RIGHT_PIN, NEO_GRB + NEO_KHZ800);
 
 #else
 
@@ -196,7 +196,8 @@ void setup() {
   pinMode(JOYSTICK_SW_PIN, INPUT);  // TODO: sort out how to read this value
 
   // Configure NeoPixel
-  pixels.begin();
+  pixelLeft.begin();
+  pixelRight.begin();
 
   // Initialize LED colors
   setSingleRGBA(LEFT, RED, ledBrightness);
@@ -290,26 +291,23 @@ void setStripRGBA(int rgb, float alpha) {
 void setSingleRGBA(int position, int rgb, float alpha) {
 #ifdef SKIP_DEVICE
   if (position == LEFT) {
-    pixels.setPin(LED_LEFT_PIN);
-    pixels.clear();
-    pixels.setPixelColor(0, pixels.Color(
+    pixelLeft.clear();
+    pixelLeft.setPixelColor(0, pixelLeft.Color(
       (int)(((rgb >> 16) & 0xFF) * alpha),
       (int)(((rgb >> 8 ) & 0xFF) * alpha),
       (int)(((rgb >> 0 ) & 0xFF) * alpha)
     ));
-    pixels.show();
+    pixelLeft.show();
   }
-  if (position == RIGHT) {
-    pixels.setPin(LED_RIGHT_PIN);
-    pixels.clear();
-    pixels.setPixelColor(1, pixels.Color(
+  else if (position == RIGHT) {
+    pixelRight.clear();
+    pixelRight.setPixelColor(0, pixelRight.Color(
       (int)(((rgb >> 16) & 0xFF) * alpha),
       (int)(((rgb >> 8 ) & 0xFF) * alpha),
       (int)(((rgb >> 0 ) & 0xFF) * alpha)
     ));
-    pixels.show();
+    pixelRight.show();
   }
-  
 #endif
 }
 
