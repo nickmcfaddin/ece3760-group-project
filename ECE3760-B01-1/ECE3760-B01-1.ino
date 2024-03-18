@@ -1,6 +1,6 @@
 // === COMPILATION "FLAGS" ==========================================================================================================================
 
-// #define SKIP_DEVICE
+#define SKIP_DEVICE
 #define DEBUG
 
 
@@ -19,43 +19,26 @@
 #define BAUD_RATE 115200
 #define SYS_DELAY 100
 
+// TODO: This could be an ENUM
 #define LEFT  1
 #define RIGHT 2
 
-#define PB_1_PIN 36
-#define PB_2_PIN 39
-#define PB_3_PIN 32
-#define PB_PAIRING_PIN 22
+#define PB_PAIRING_PIN  22
 
-#define SW_1_PIN 25
-#define SW_2_PIN 26
+#define SW_1_PIN        25
+#define SW_2_PIN        26
 
 #define JOYSTICK_X_PIN  33
 #define JOYSTICK_Y_PIN  32
-#define JOYSTICK_SW_PIN 22
+#define JOYSTICK_SW_PIN 27
 
-#define RGB1_R_PIN 25
-#define RGB1_G_PIN 26
-#define RGB1_B_PIN 27
-#define RGB2_R_PIN 14
-#define RGB2_G_PIN 12
-#define RGB2_B_PIN 13
+#define LED_LEFT_PIN    25
+#define LED_RIGHT_PIN   26
+#define LED_STRIP_PIN   32
 
-#define RGB1_R_CHANNEL 0
-#define RGB1_G_CHANNEL 1
-#define RGB1_B_CHANNEL 2
-#define RGB2_R_CHANNEL 3
-#define RGB2_G_CHANNEL 4
-#define RGB2_B_CHANNEL 5
-
-#define LED_STRIP_PIN  22
-#define LED_NUM_PIXELS 8
-
-#define PWM_FREQUENCY  100   // 100Hz frequency
-#define PWM_RESOLUTION 8     // 8 bits of resolution (0-255)
+#define LED_STRIP_NUM_PIXELS 8
 
 #define TEAM_ID 123          // Unique identifier for WiFi-based pairing
-
 #define WIFI_CHANNEL 0       // Wifi channel used for ESP-NOW
 #define DEFAULT_ID   1       // Default ID for unpaired sweeper devices
 #define MAX_PEERS    3       // Maximum number of allowed peer devices
@@ -142,19 +125,13 @@ int jsX =  0;          // value of 'x' joystick (JS) position [analog]
 int jsY =  0;          // value of 'y' joystick (JS) position [analog]
 int jsSW = 0;          // value of joystick (JS) 'switch'     [analog]
 
-int rgb1Pins[] =     {RGB1_R_PIN,     RGB1_G_PIN,     RGB1_B_PIN    };  // RGB LED 1 PWM pins
-int rgb2Pins[] =     {RGB2_R_PIN,     RGB2_G_PIN,     RGB2_B_PIN    };  // RGB LED 2 PWM pins
-int rgb1Channels[] = {RGB1_R_CHANNEL, RGB1_G_CHANNEL, RGB1_B_CHANNEL};  // RGB LED 1 PWM channels
-int rgb2Channels[] = {RGB2_R_CHANNEL, RGB2_G_CHANNEL, RGB2_B_CHANNEL};  // RGB LED 2 PWM channels
-
-int* leftLED = rgb1Channels;   // Aliase for RGB LED left PWM channels
-int* rightLED = rgb2Channels;  // Aliase for RGB LED right PWM channels
+Adafruit_NeoPixel pixels(1, LED_LEFT_PIN, NEO_GRB + NEO_KHZ800);
 
 #else
 
 int swPosition = 0;     // value of 'position' switch (SW) [LEFT/RIGHT]
 
-Adafruit_NeoPixel pixels(LED_NUM_PIXELS, LED_STRIP_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixels(LED_STRIP_NUM_PIXELS, LED_STRIP_PIN, NEO_GRB + NEO_KHZ800);
 
 #endif
 
@@ -213,20 +190,17 @@ void setup() {
   #ifdef SKIP_DEVICE
   
   // Configure input GPIOs
-  pinMode(PB_1_PIN, INPUT);
-  pinMode(PB_2_PIN, INPUT);
+  pinMode(PB_PAIRING_PIN, INPUT);
   pinMode(JOYSTICK_X_PIN, INPUT);
   pinMode(JOYSTICK_Y_PIN, INPUT);
-  // pinMode(JOYSTICK_SW_PIN, INPUT);  // TODO: sort out how to read this value
-  pinMode(PB_PAIRING_PIN, INPUT);
+  pinMode(JOYSTICK_SW_PIN, INPUT);  // TODO: sort out how to read this value
 
-  // Configure PWM channels
-  configurePWM(rgb1Pins, rgb1Channels, 3);  // configure PWM for RGB LED 1
-  configurePWM(rgb2Pins, rgb2Channels, 3);  // configure PWM for RGB LED 2
+  // Configure NeoPixel
+  pixels.begin();
 
   // Initialize LED colors
-  setPwmRGBA(leftLED,  RED, ledBrightness);
-  setPwmRGBA(rightLED, RED, ledBrightness);
+  setSingleRGBA(LEFT, RED, ledBrightness);
+  setSingleRGBA(RIGHT, RED, ledBrightness);
 
   #else
 
@@ -234,7 +208,7 @@ void setup() {
   addPeer(broadcastMAC);
     
   // Configure input GPIOs
-  pinMode(PB_3_PIN, INPUT);
+  pinMode(PB_PAIRING_PIN, INPUT);
   pinMode(SW_1_PIN, INPUT);
   pinMode(SW_2_PIN, INPUT);
 
@@ -253,9 +227,6 @@ void loop() {
     #ifdef SKIP_DEVICE
 
     // 1. Update push button (PB) values
-    pbLeft = digitalRead(PB_1_PIN);
-    pbRight = digitalRead(PB_2_PIN);
-
     bool pbPairingValueNext = digitalRead(PB_PAIRING_PIN);
     bool pbPairingStateNext = debounce(pbPairingValue, pbPairingValueNext, pbPairingState, &pairingLastDebounce);
     bool pbPairingLogicNext = edgeDetection(pbPairingState, pbPairingStateNext, pbPairingLogic);
@@ -281,7 +252,7 @@ void loop() {
     #else
 
     // 1. Update push button (PB) values
-    bool pbPairingValueNext = digitalRead(PB_3_PIN);
+    bool pbPairingValueNext = digitalRead(PB_PAIRING_PIN);
     bool pbPairingStateNext = debounce(pbPairingValue, pbPairingValueNext, pbPairingState, &pairingLastDebounce);
     bool pbPairingLogicNext = edgeDetection(pbPairingState, pbPairingStateNext, pbPairingLogic);
 
@@ -302,24 +273,10 @@ void loop() {
 
 // === GPIO FUNCTIONS ===============================================================================================================================
 
-void configurePWM(int* pin, int* channel, int count) {
-  for (int i = 0; i < count; i++) {
-    ledcSetup(channel[i], PWM_FREQUENCY, PWM_RESOLUTION);
-    ledcAttachPin(pin[i], channel[i]);
-  }
-}
-
-// Set the Red (R) Blue (B) Green (G) and Alpha (A) values for a PWM controlled RGB LED
-void setPwmRGBA(int* channels, int rgb, float alpha) {
-  ledcWrite(channels[0], (int)(((rgb >> 16) & 0xFF) * alpha));
-  ledcWrite(channels[1], (int)(((rgb >> 8 ) & 0xFF) * alpha));
-  ledcWrite(channels[2], (int)(((rgb >> 0 ) & 0xFF) * alpha));
-}
-
 void setStripRGBA(int rgb, float alpha) {
 #ifndef SKIP_DEVICE
   pixels.clear();
-  for (int i = 0; i < LED_NUM_PIXELS; i++) {
+  for (int i = 0; i < LED_STRIP_NUM_PIXELS; i++) {
     pixels.setPixelColor(i, pixels.Color(
       (int)(((rgb >> 16) & 0xFF) * alpha),
       (int)(((rgb >> 8 ) & 0xFF) * alpha),
@@ -327,6 +284,32 @@ void setStripRGBA(int rgb, float alpha) {
     ));
   }
   pixels.show();
+#endif
+}
+
+void setSingleRGBA(int position, int rgb, float alpha) {
+#ifdef SKIP_DEVICE
+  if (position == LEFT) {
+    pixels.setPin(LED_LEFT_PIN);
+    pixels.clear();
+    pixels.setPixelColor(0, pixels.Color(
+      (int)(((rgb >> 16) & 0xFF) * alpha),
+      (int)(((rgb >> 8 ) & 0xFF) * alpha),
+      (int)(((rgb >> 0 ) & 0xFF) * alpha)
+    ));
+    pixels.show();
+  }
+  if (position == RIGHT) {
+    pixels.setPin(LED_RIGHT_PIN);
+    pixels.clear();
+    pixels.setPixelColor(1, pixels.Color(
+      (int)(((rgb >> 16) & 0xFF) * alpha),
+      (int)(((rgb >> 8 ) & 0xFF) * alpha),
+      (int)(((rgb >> 0 ) & 0xFF) * alpha)
+    ));
+    pixels.show();
+  }
+  
 #endif
 }
 
@@ -420,56 +403,56 @@ void skipLogic() {
     // 2. Execute joystick command
     switch (quadrant) {
       case BOTTOM_LEFT:
-        setPwmRGBA(leftLED, BLUE, ledBrightness);    // set left LED 'blue'
-        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        setSingleRGBA(LEFT, BLUE, ledBrightness);    // set left LED 'blue'
+        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
         dataPacket.leftState = LIGHT;                // update left state
         dataPacket.rightState = STOP;                // update right state
         break;
       case BOTTOM_CENTER:
-        setPwmRGBA(leftLED, BLUE, ledBrightness);    // set left LED 'blue'
-        setPwmRGBA(rightLED, BLUE, ledBrightness);   // set right LED 'blue'
+        setSingleRGBA(LEFT, BLUE, ledBrightness);    // set left LED 'blue'
+        setSingleRGBA(RIGHT, BLUE, ledBrightness);   // set right LED 'blue'
         dataPacket.leftState = LIGHT;                // update left state
         dataPacket.rightState = LIGHT;               // update right state
         break;
       case BOTTOM_RIGHT:
-        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
-        setPwmRGBA(rightLED, BLUE, ledBrightness);   // set right LED 'blue'
+        setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
+        setSingleRGBA(RIGHT, BLUE, ledBrightness);   // set right LED 'blue'
         dataPacket.leftState = STOP;                 // update left state
         dataPacket.rightState = LIGHT;               // update right state
         break;
       case MIDDLE_LEFT:
-        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
-        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
+        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
         dataPacket.leftState = STOP;                 // update left state
         dataPacket.rightState = STOP;                // update right state
         break;
       case MIDDLE_CENTER:
-        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
-        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
+        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
         dataPacket.leftState = STOP;                 // update left state
         dataPacket.rightState = STOP;                // update right state
         break;
       case MIDDLE_RIGHT:
-        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
-        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
+        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
         dataPacket.leftState = STOP;                 // update left state
         dataPacket.rightState = STOP;                // update right state
         break;
       case TOP_LEFT:
-        setPwmRGBA(leftLED, GREEN, ledBrightness);   // set left LED 'green'
-        setPwmRGBA(rightLED, RED, ledBrightness);    // set right LED 'red'
+        setSingleRGBA(LEFT, GREEN, ledBrightness);   // set left LED 'green'
+        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
         dataPacket.leftState = HARD;                 // update left state
         dataPacket.rightState = STOP;                // update right state
         break;
       case TOP_CENTER:
-        setPwmRGBA(leftLED, GREEN, ledBrightness);   // set left LED 'green'
-        setPwmRGBA(rightLED, GREEN, ledBrightness);  // set right LED 'green'
+        setSingleRGBA(LEFT, GREEN, ledBrightness);   // set left LED 'green'
+        setSingleRGBA(RIGHT, GREEN, ledBrightness);  // set right LED 'green'
         dataPacket.leftState = HARD;                 // update left state
         dataPacket.rightState = HARD;                // update right state
         break;
       case TOP_RIGHT:
-        setPwmRGBA(leftLED, RED, ledBrightness);     // set left LED 'red'
-        setPwmRGBA(rightLED, GREEN, ledBrightness);  // set right LED 'green'
+        setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
+        setSingleRGBA(RIGHT, GREEN, ledBrightness);  // set right LED 'green'
         dataPacket.leftState = STOP;                 // update left state
         dataPacket.rightState = HARD;                // update right state
         break;
@@ -478,8 +461,8 @@ void skipLogic() {
     // 3. Check for pairing push button (PB)
     if (pbPairingLogic) {
       // Set both LEDs to 'white'
-      setPwmRGBA(leftLED, WHITE, ledBrightness);
-      setPwmRGBA(rightLED, WHITE, ledBrightness);
+      setSingleRGBA(LEFT, WHITE, ledBrightness);
+      setSingleRGBA(RIGHT, WHITE, ledBrightness);
 
       // Enter pairing mode
       for (int i = 0; i < numPeers; i++) {
@@ -502,8 +485,8 @@ void skipLogic() {
     Serial.println("Waiting for peers to connect");
     #endif
 
-    setPwmRGBA(leftLED, WHITE, ledBrightness);
-    setPwmRGBA(rightLED, WHITE, ledBrightness);
+    setSingleRGBA(LEFT, WHITE, ledBrightness);
+    setSingleRGBA(RIGHT, WHITE, ledBrightness);
 
     // Delay to reduce the workload/power consumption
     delay(SYS_DELAY);
@@ -737,8 +720,8 @@ bool addPeer(const uint8_t *peerAddress) {
           dataPacket.leftState = STOP;
           dataPacket.rightState = STOP;
           #ifdef SKIP_DEVICE
-          setPwmRGBA(leftLED,  RED, ledBrightness);
-          setPwmRGBA(rightLED, RED, ledBrightness);
+          setSingleRGBA(LEFT,  RED, ledBrightness);
+          setSingleRGBA(RIGHT, RED, ledBrightness);
           #endif
         }
 

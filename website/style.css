@@ -54,7 +54,6 @@ body {
 /* Page Styling ================================================================================ */
 
 .page {
-  background-size: cover;
 
   width: 100%;               /* width: full length of page */
   height: calc(100% - 3em);  /* height: full height of page */
