@@ -1,6 +1,6 @@
 // === COMPILATION "FLAGS" ==========================================================================================================================
 
-// #define SKIP_DEVICE
+#define SKIP_DEVICE
 #define DEBUG
 
 
@@ -23,7 +23,7 @@
 #define LEFT  1
 #define RIGHT 2
 
-#define PB_PAIRING_PIN  22
+#define PB_PAIRING_PIN  14
 
 #define SW_1_PIN        25
 #define SW_2_PIN        26
@@ -106,15 +106,19 @@ volatile bool enable = true;
 volatile bool paired = false;
 
 // Configurable parameters
-float ledBrightness =    0.10;  // [%] must be between 0.0 - 1.0
-float blinkIterval =     0.50;  // [s] decimals after the millisecond position will be ignored
-float pairingPressTime = 2.00;  // [s] decimals after the millisecond position will be ignored
+float ledBrightness =    0.100;    // [%] must be between 0.0 - 1.0
+float debouncePeroid =   0.050;    // [s] decimals after the millisecond position will be ignored
+float longPressTimeout = 2.000;    // [s] decimals after the millisecond position will be ignored
+float doublePressTimeout = 0.750;  // [s] decimals after the millisecond position will be ignored
 
-bool pbPairingValue = false;   // value of 'pairing' push button (PB) [digital]
-bool pbPairingState = false;   // value of 'pairing' push button (PB) after debounce
-bool pbPairingLogic = false;   // value of 'pairing' push button (PB) after edge detection
-bool pairingLEDState = false;  // State of the LEDs during pairing mode (for blinking)
-int pairingLastDebounce = 0;   // Last time of debounce occurance for pairing push button (PB)
+bool pbPairingValue = false;        // value of 'pairing' push button (PB) [digital]
+bool pbPairingState = false;        // value of 'pairing' push button (PB) after debounce
+bool pbPairingDoublePress = false;  // logical value of 'pairing' push button (PB) double press state
+bool pbPairingLongPress = false;    // logical value of 'pairing' push button (PB) long press state
+int pairingLastDebounce = 0;        // Last time of debounce occurance for pairing push button (PB)
+
+int doublePressPeriod = 0;
+int longPressPeriod = 0;
 
 #ifdef SKIP_DEVICE
 
@@ -124,6 +128,12 @@ bool pbRight = false;  // value of 'right' push button (PB) [digital]
 int jsX =  0;          // value of 'x' joystick (JS) position [analog]
 int jsY =  0;          // value of 'y' joystick (JS) position [analog]
 int jsSW = 0;          // value of joystick (JS) 'switch'     [analog]
+
+int prev_jsX = 0;
+int prev_jsY = 0;
+int lastChangedTime = 0;
+int sleepTime = 10000;
+int posBuffer = 100;
 
 Adafruit_NeoPixel pixelLeft(1, LED_LEFT_PIN, NEO_GRB + NEO_KHZ800), pixelRight(1, LED_RIGHT_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -150,6 +160,9 @@ int numPeers = 0;
 // === MAIN PROGRAM ===============================================================================
 
 void setup() {
+
+  // Configure ULP wakeup condition
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_14, 0);
 
   // Configure Serial Communication
   Serial.begin(BAUD_RATE);
@@ -186,6 +199,8 @@ void setup() {
     Serial.println("Error enabling wakeup timer");
     #endif
   }
+
+  print_wakeup_reason();
 
   #ifdef SKIP_DEVICE
   
@@ -230,15 +245,35 @@ void loop() {
     // 1. Update push button (PB) values
     bool pbPairingValueNext = digitalRead(PB_PAIRING_PIN);
     bool pbPairingStateNext = debounce(pbPairingValue, pbPairingValueNext, pbPairingState, &pairingLastDebounce);
-    bool pbPairingLogicNext = edgeDetection(pbPairingState, pbPairingStateNext, pbPairingLogic);
+
+    pbPairingDoublePress = doublePress(pbPairingState, pbPairingStateNext);
+    pbPairingLongPress = longPress(pbPairingState, pbPairingStateNext);
+
+    #ifdef DEBUG
+    Serial.printf("pbPairingDoublePress: %d\n", pbPairingDoublePress);
+    Serial.printf("pbPairingLongPress:   %d\n", pbPairingLongPress);
+    Serial.printf("doublePressPeriod:   %d\n", doublePressPeriod);
+    Serial.printf("longPressPeriod:   %d\n", longPressPeriod);
+    #endif
 
     pbPairingValue = pbPairingValueNext;
     pbPairingState = pbPairingStateNext;
-    pbPairingLogic = pbPairingLogicNext;
     
     // 2. Update joystick (JS) values
     jsX = analogRead(JOYSTICK_X_PIN);
     jsY = analogRead(JOYSTICK_Y_PIN);
+
+    // 3. Determine if inactive & need to enter deep sleep
+    if (prev_jsX >= jsX + posBuffer || prev_jsX <= jsX - posBuffer || prev_jsY >= jsY + posBuffer || prev_jsY <= jsY - posBuffer) {
+      lastChangedTime = millis();
+    }
+    
+    if (millis() - lastChangedTime > sleepTime){
+      goToSleep();
+    }
+
+    prev_jsX = jsX;
+    prev_jsY = jsY;
 
     // jsSW = analogRead(JOYSTICK_SW_PIN);  // TODO: not enough range to read digitally, switch to analog pin
 
@@ -247,7 +282,7 @@ void loop() {
     serialPlot(jsY, "Y", true);
     #endif
 
-    // 3. Perform Skip Logic
+    // 4. Perform Skip Logic
     skipLogic();
 
     #else
@@ -255,11 +290,19 @@ void loop() {
     // 1. Update push button (PB) values
     bool pbPairingValueNext = digitalRead(PB_PAIRING_PIN);
     bool pbPairingStateNext = debounce(pbPairingValue, pbPairingValueNext, pbPairingState, &pairingLastDebounce);
-    bool pbPairingLogicNext = edgeDetection(pbPairingState, pbPairingStateNext, pbPairingLogic);
+    
+    pbPairingDoublePress = doublePress(pbPairingState, pbPairingStateNext);
+    pbPairingLongPress = longPress(pbPairingState, pbPairingStateNext);
+
+    #ifdef DEBUG
+    Serial.printf("pbPairingDoublePress: %d\n", pbPairingDoublePress);
+    Serial.printf("pbPairingLongPress:   %d\n", pbPairingLongPress);
+    Serial.printf("doublePressPeriod:   %d\n", doublePressPeriod);
+    Serial.printf("longPressPeriod:   %d\n", longPressPeriod);
+    #endif
 
     pbPairingValue = pbPairingValueNext;
     pbPairingState = pbPairingStateNext;
-    pbPairingLogic = pbPairingLogicNext;
 
     // 2. Update switch (SW) value
     swPosition = digitalRead(SW_1_PIN) ? LEFT : RIGHT;  // ASSUMPTION: anything not 'left' is 'RIGHT'
@@ -319,8 +362,8 @@ bool debounce(bool last, bool current, bool state, int* lastDebounce) {
     *lastDebounce = millis();
   }
 
-  // 
-  if ((millis() - *lastDebounce) > (int)(pairingPressTime * 1000)) {
+  // Check for debounce timeout
+  if ((millis() - *lastDebounce) > (int)(debouncePeroid * 1000)) {
     if (state != current)
     return current;
   } else {
@@ -328,15 +371,34 @@ bool debounce(bool last, bool current, bool state, int* lastDebounce) {
   }
 }
 
-bool edgeDetection(bool previous, bool current, bool logic) {
-  // Check if the current button state is HIGH and the previous buttons state was LOW (rising edge detection)
+bool doublePress(bool previous, bool current) {
+  // Rising Edge
   if (current && !previous) {
-    // Toggle the current logical state.
-    return !logic;
-  } else {
-    // No change in logical state
-    return logic;
+    // Check for double press timeout
+    if ((millis() - doublePressPeriod) < (int)(doublePressTimeout * 1000)) {
+      return true;
+    }
   }
+  // Falling Edge
+  else if (!current && previous) {
+    doublePressPeriod = millis();
+  }
+  return false;
+}
+
+bool longPress(bool previous, bool current) {
+  // Rising Edge
+  if (current && !previous) {
+    longPressPeriod = millis();
+  }
+  // Falling Edge
+  else if (!current && previous) {
+    // Check for long press timeout
+    if ((millis() - longPressPeriod) > (int)(longPressTimeout * 1000)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 int parseQuadrant(int xPos, int yPos) {
@@ -379,6 +441,24 @@ void serialPlot(int value, char* label, bool end) {
   if (end) {
     Serial.print("\n");
   }
+}
+
+void print_wakeup_reason(){
+  #ifdef DEBUG
+  esp_sleep_wakeup_cause_t wakeup_reason;
+
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+
+  switch(wakeup_reason)
+  {
+    case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); break;
+    case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
+    case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
+    case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
+    default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
+  }
+  #endif
 }
 
 
@@ -457,7 +537,7 @@ void skipLogic() {
     }
 
     // 3. Check for pairing push button (PB)
-    if (pbPairingLogic) {
+    if (pbPairingDoublePress) {
       // Set both LEDs to 'white'
       setSingleRGBA(LEFT, WHITE, ledBrightness);
       setSingleRGBA(RIGHT, WHITE, ledBrightness);
@@ -472,6 +552,8 @@ void skipLogic() {
         }
       }
       numPeers = 0;   // reset number of peers
+
+      return;
     }
 
     enable = false;  // disable main thread sampling until ACK is recieved
@@ -487,7 +569,12 @@ void skipLogic() {
     setSingleRGBA(RIGHT, WHITE, ledBrightness);
 
     // Delay to reduce the workload/power consumption
-    delay(SYS_DELAY);
+    delay(SYS_DELAY);  // TODO: replace with timeout timer
+  }
+
+  // Check for power push button (PB)
+  if (pbPairingLongPress) {
+    goToSleep();
   }
 }
 
@@ -515,7 +602,7 @@ void sweepLogic() {
     }
 
     // 3. Check for pairing button pushed
-    if (pbPairingLogic) {
+    if (pbPairingDoublePress) {
       // Clear last recieved state
       dataPacket.leftState = STOP;
       dataPacket.rightState = STOP;
@@ -549,7 +636,12 @@ void sweepLogic() {
   }
 
   // Delay to reduce the workload/power consumption
-  delay(SYS_DELAY);
+  delay(SYS_DELAY);  // TODO: replace with timeout timer
+
+  // Check for power push button (PB)
+  if (pbPairingLongPress) {
+    goToSleep();
+  }
 }
 
 #endif
@@ -612,13 +704,6 @@ void onRecieve(const uint8_t* macAddress, const uint8_t* data, int length) {
             Serial.println(" (transmit)");
             Serial.printf(" status: %s\n", result == ESP_OK ? "SUCCESS" : "FAIL");
             #endif
-
-            // Reset pairing push button (PB) parameters
-            pbPairingValue = false;
-            pbPairingState = false;
-            pbPairingLogic = false;
-            pairingLEDState = false;
-            pairingLastDebounce = 0;
           }
         }
 
@@ -629,13 +714,6 @@ void onRecieve(const uint8_t* macAddress, const uint8_t* data, int length) {
           memcpy(serverMAC, pairingPacket.macAddr, sizeof(uint8_t[MAC_BYTES]));
           
           paired = true;
-
-          // Reset pairing push button (PB) parameters
-          pbPairingValue = false;
-          pbPairingState = false;
-          pbPairingLogic = false;
-          pairingLEDState = false;
-          pairingLastDebounce = 0;
         }
         
         #endif
@@ -776,4 +854,17 @@ void lightSleep() {
     Serial.println("Error initializing ESP-NOW");
     #endif
   }
+}
+
+void goToSleep() {
+  // Disable wakeup source (ie. the timer used for light sleep)
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  // Enable GPIO wakeup source
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_14, 1);
+
+  #ifdef DEBUG
+  Serial.println("Going to sleep now");
+  #endif
+
+  esp_deep_sleep_start();
 }
