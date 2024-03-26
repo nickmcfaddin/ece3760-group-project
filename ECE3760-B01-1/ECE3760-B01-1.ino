@@ -52,6 +52,7 @@
 #define BLUE      0x0000FF
 #define PURPLE    0xFF00FF
 #define WHITE     0xFFFFFF
+#define OFF       0x000000
 
 #define JS_CENTER 2000
 #define THRESHOLD 800
@@ -857,6 +858,16 @@ void lightSleep() {
 }
 
 void goToSleep() {
+  #ifdef SKIP_DEVICE
+  // turn off LEDS
+  setSingleRGBA(LEFT, OFF, ledBrightness);
+  setSingleRGBA(RIGHT, OFF, ledBrightness);
+  #else
+  // Initialize LED colors
+  setStripRGBA(OFF, ledBrightness);
+  #endif
+
+
   // Disable wakeup source (ie. the timer used for light sleep)
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
   // Enable GPIO wakeup source
