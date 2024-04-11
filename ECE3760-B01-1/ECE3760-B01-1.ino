@@ -1,7 +1,8 @@
 // === COMPILATION "FLAGS" ==========================================================================================================================
 
-#define SKIP_DEVICE
+// #define SKIP_DEVICE
 #define DEBUG
+#define PLOT
 
 
 // === INLCUDE STATEMENTS ===========================================================================================================================
@@ -17,7 +18,7 @@
 // === DEFINE STATEMENTS ============================================================================================================================
 
 #define BAUD_RATE 115200
-#define SYS_DELAY 100
+#define SYS_DELAY 100  // [ms] delay between program loops during non-critical operation
 
 // TODO: This could be an ENUM
 #define LEFT  1
@@ -38,7 +39,7 @@
 
 #define LED_STRIP_NUM_PIXELS 8
 
-#define TEAM_ID 123          // Unique identifier for WiFi-based pairing
+#define TEAM_ID      123     // Unique identifier for WiFi-based pairing
 #define WIFI_CHANNEL 0       // Wifi channel used for ESP-NOW
 #define DEFAULT_ID   1       // Default ID for unpaired sweeper devices
 #define MAX_PEERS    3       // Maximum number of allowed peer devices
@@ -54,29 +55,26 @@
 #define WHITE     0xFFFFFF
 #define OFF       0x000000
 
-#define JS_CENTER 2000
-#define THRESHOLD 800
+#define JS_CENTER      1900
+#define JS_HOME_BUFFER 100
+#define JS_MAX         4095
 
 
 // === STRUCTS & ENUMS ============================================================================
 
 typedef enum state_enum {
-  STOP,
-  LIGHT,
-  HARD
+  STOP,   // Command to stop sweeping
+  LIGHT,  // Command to lightly sweep or clear ice
+  HARD    // Command to sweep the ice hard
 } state_t;
 
-typedef enum quadrant_enum {
-  BOTTOM_LEFT,
-  BOTTOM_CENTER,
-  BOTTOM_RIGHT,
-  MIDDLE_LEFT,
-  MIDDLE_CENTER,
-  MIDDLE_RIGHT,
-  TOP_LEFT,
-  TOP_CENTER,
-  TOP_RIGHT
-} quadrant_t;
+typedef enum position_enum {
+  CENTER,
+  NORTH,
+  EAST,
+  SOUTH,
+  WEST
+} position_t;
 
 typedef enum message_type_enum {
   PAIRING,
@@ -107,10 +105,11 @@ volatile bool enable = true;
 volatile bool paired = false;
 
 // Configurable parameters
-float ledBrightness =    0.100;    // [%] must be between 0.0 - 1.0
-float debouncePeroid =   0.050;    // [s] decimals after the millisecond position will be ignored
-float longPressTimeout = 2.000;    // [s] decimals after the millisecond position will be ignored
-float doublePressTimeout = 0.750;  // [s] decimals after the millisecond position will be ignored
+float ledBrightness =       0.100;  // [%] must be between 0.0 - 1.0
+float debouncePeroid =      0.050;  // [s] decimals after the millisecond position will be ignored
+float longPressTimeout =    2.000;  // [s] decimals after the millisecond position will be ignored
+float doublePressTimeout =  0.750;  // [s] decimals after the millisecond position will be ignored
+float sleepTimeout =       60.000;  // [s] decimals after the millisecond position will be ignored
 
 bool pbPairingValue = false;        // value of 'pairing' push button (PB) [digital]
 bool pbPairingState = false;        // value of 'pairing' push button (PB) after debounce
@@ -123,19 +122,15 @@ int longPressPeriod = 0;
 
 #ifdef SKIP_DEVICE
 
-#ifdef SKIP_DEVICE
+bool pbLeft =  false;    // value of 'left'  push button (PB) [digital]
+bool pbRight = false;    // value of 'right' push button (PB) [digital]
 
-bool pbLeft =  false;  // value of 'left'  push button (PB) [digital]
-bool pbRight = false;  // value of 'right' push button (PB) [digital]
+int jsX =  0;            // value of 'x' joystick (JS) position [analog]
+int jsY =  0;            // value of 'y' joystick (JS) position [analog]
+int jsSW = 0;            // value of joystick (JS) 'switch'     [analog]
 
-int jsX =  0;          // value of 'x' joystick (JS) position [analog]
-int jsY =  0;          // value of 'y' joystick (JS) position [analog]
-int jsSW = 0;          // value of joystick (JS) 'switch'     [analog]
+int jsLastMovement = 0;  // time of last joystick movement outside of 'HOME' buffer
 
-int prev_jsX = 0;
-int prev_jsY = 0;
-int lastChangedTime = 0;
-int sleepTime = 10000;
 int posBuffer = 100;
 
 Adafruit_NeoPixel pixelLeft(1, LED_LEFT_PIN, NEO_GRB + NEO_KHZ800), pixelRight(1, LED_RIGHT_PIN, NEO_GRB + NEO_KHZ800);
@@ -255,8 +250,8 @@ void loop() {
     #ifdef DEBUG
     Serial.printf("pbPairingDoublePress: %d\n", pbPairingDoublePress);
     Serial.printf("pbPairingLongPress:   %d\n", pbPairingLongPress);
-    Serial.printf("doublePressPeriod:   %d\n", doublePressPeriod);
-    Serial.printf("longPressPeriod:   %d\n", longPressPeriod);
+    Serial.printf("doublePressPeriod:    %d [ms]\n", millis() - doublePressPeriod);
+    Serial.printf("longPressPeriod:      %d [ms]\n", millis() - longPressPeriod);
     #endif
 
     pbPairingValue = pbPairingValueNext;
@@ -266,26 +261,12 @@ void loop() {
     jsX = analogRead(JOYSTICK_X_PIN);
     jsY = analogRead(JOYSTICK_Y_PIN);
 
-    // 3. Determine if inactive & need to enter deep sleep
-    if (prev_jsX >= jsX + posBuffer || prev_jsX <= jsX - posBuffer || prev_jsY >= jsY + posBuffer || prev_jsY <= jsY - posBuffer) {
-      lastChangedTime = millis();
-    }
-    
-    if (millis() - lastChangedTime > sleepTime){
-      goToSleep();
-    }
-
-    prev_jsX = jsX;
-    prev_jsY = jsY;
-
-    // jsSW = analogRead(JOYSTICK_SW_PIN);  // TODO: not enough range to read digitally, switch to analog pin
-
-    #ifdef DEBUG
+    #ifdef PLOT
     serialPlot(jsX, "X", false);
     serialPlot(jsY, "Y", true);
     #endif
 
-    // 4. Perform Skip Logic
+    // 3. Perform Skip Logic
     skipLogic();
 
     #else
@@ -300,8 +281,8 @@ void loop() {
     #ifdef DEBUG
     Serial.printf("pbPairingDoublePress: %d\n", pbPairingDoublePress);
     Serial.printf("pbPairingLongPress:   %d\n", pbPairingLongPress);
-    Serial.printf("doublePressPeriod:   %d\n", doublePressPeriod);
-    Serial.printf("longPressPeriod:   %d\n", longPressPeriod);
+    Serial.printf("doublePressPeriod:    %d [ms]\n", millis() - doublePressPeriod);
+    Serial.printf("longPressPeriod:      %d [ms]\n", millis() - longPressPeriod);
     #endif
 
     pbPairingValue = pbPairingValueNext;
@@ -404,38 +385,29 @@ bool longPress(bool previous, bool current) {
   return false;
 }
 
-int parseQuadrant(int xPos, int yPos) {
-  int quadrant = -1;
-
-  // Determine row (yPos)
-  if (yPos > (JS_CENTER + THRESHOLD)) {
-    // Top Row
-    quadrant = 6;
-  }  
-  else if (yPos < (JS_CENTER - THRESHOLD)) {
-    // Bottom Row
-    quadrant = 0;
+int parseJsPosition(int xPos, int yPos) {
+  // Check if joystick (JS) is in 'center' position
+  if (xPos >= JS_CENTER - JS_HOME_BUFFER && xPos <= JS_CENTER + JS_HOME_BUFFER && yPos >= JS_CENTER - JS_HOME_BUFFER && yPos <= JS_CENTER + JS_HOME_BUFFER) {
+    return CENTER;
   }
   else {
-    // Middle Row
-    quadrant = 3;
+    // Check if joystick (JS) is 'above' the line { y = x } dividing the coordinate plane
+    if (yPos > xPos) {
+      // Check if joystick (JS) is 'above' the line { y = JS_MAX - x } dividing the coordinate plane
+      if (yPos > (JS_MAX - xPos)) {
+        return NORTH;
+      } else {
+        return WEST;
+      }
+    } else {
+      // Check if joystick (JS) is 'above' the line { y = JS_MAX - x } dividing the coordinate plane
+      if (yPos > (JS_MAX - xPos)) {
+        return EAST;
+      } else {
+        return SOUTH;
+      }
+    }
   }
-
-  // Determine column (xPos)
-  if (xPos > (JS_CENTER + THRESHOLD)) {
-    // Left Column
-    quadrant += 2;
-  }
-  else if (xPos < (JS_CENTER - THRESHOLD)) {
-    // Right Column
-    quadrant += 0;
-  }
-  else {
-    // Center Column
-    quadrant += 1;
-  }
-
-  return quadrant;
 }
 
 void serialPlot(int value, char* label, bool end) {
@@ -471,71 +443,65 @@ void print_wakeup_reason(){
 
 void skipLogic() {
 
+  // 1. Determine if joystick (JS) inactive & need to enter deep sleep
+  int position = parseJsPosition(jsX, jsY);
+
+  if (position != CENTER) {
+    jsLastMovement = millis();
+  }
+  
+  if (millis() - jsLastMovement > (int)(sleepTimeout * 1000)) {
+    goToSleep();
+  }
+
+  #ifdef DEBUG
+  Serial.printf("Joystick Position:    %d (C:0 | N:1 | E:2 | S:3 | W:4)\n", position);
+  Serial.printf("Joystick Timeout:     %d [ms]\n", millis() - jsLastMovement);
+  #endif
+
   // Check if there are any connected peers
   if (numPeers > 0) {
 
-    // 1. Determine joystick quadrant
-    int quadrant = parseQuadrant(jsX, jsY);
-
     #ifdef DEBUG
-    Serial.printf("Joystick Position: %d\n", quadrant);
+    Serial.println("Connected Peers:");
+    for (int i = 0; i < numPeers; i++) {
+      Serial.printf("[%d] ", i);
+      printMAC(peerMACs[i]);
+      Serial.println();
+    }
     #endif
 
     // 2. Execute joystick command
-    switch (quadrant) {
-      case BOTTOM_LEFT:
-        setSingleRGBA(LEFT, BLUE, ledBrightness);    // set left LED 'blue'
-        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
-        dataPacket.leftState = LIGHT;                // update left state
-        dataPacket.rightState = STOP;                // update right state
-        break;
-      case BOTTOM_CENTER:
-        setSingleRGBA(LEFT, BLUE, ledBrightness);    // set left LED 'blue'
-        setSingleRGBA(RIGHT, BLUE, ledBrightness);   // set right LED 'blue'
-        dataPacket.leftState = LIGHT;                // update left state
-        dataPacket.rightState = LIGHT;               // update right state
-        break;
-      case BOTTOM_RIGHT:
-        setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
-        setSingleRGBA(RIGHT, BLUE, ledBrightness);   // set right LED 'blue'
-        dataPacket.leftState = STOP;                 // update left state
-        dataPacket.rightState = LIGHT;               // update right state
-        break;
-      case MIDDLE_LEFT:
+    switch (position) {
+      case CENTER:
         setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
         setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
         dataPacket.leftState = STOP;                 // update left state
         dataPacket.rightState = STOP;                // update right state
         break;
-      case MIDDLE_CENTER:
-        setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
-        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
-        dataPacket.leftState = STOP;                 // update left state
-        dataPacket.rightState = STOP;                // update right state
-        break;
-      case MIDDLE_RIGHT:
-        setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
-        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
-        dataPacket.leftState = STOP;                 // update left state
-        dataPacket.rightState = STOP;                // update right state
-        break;
-      case TOP_LEFT:
-        setSingleRGBA(LEFT, GREEN, ledBrightness);   // set left LED 'green'
-        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
-        dataPacket.leftState = HARD;                 // update left state
-        dataPacket.rightState = STOP;                // update right state
-        break;
-      case TOP_CENTER:
+      case NORTH:
         setSingleRGBA(LEFT, GREEN, ledBrightness);   // set left LED 'green'
         setSingleRGBA(RIGHT, GREEN, ledBrightness);  // set right LED 'green'
         dataPacket.leftState = HARD;                 // update left state
         dataPacket.rightState = HARD;                // update right state
         break;
-      case TOP_RIGHT:
+      case EAST:
         setSingleRGBA(LEFT, RED, ledBrightness);     // set left LED 'red'
         setSingleRGBA(RIGHT, GREEN, ledBrightness);  // set right LED 'green'
         dataPacket.leftState = STOP;                 // update left state
         dataPacket.rightState = HARD;                // update right state
+        break;
+      case WEST:
+        setSingleRGBA(LEFT, GREEN, ledBrightness);   // set left LED 'green'
+        setSingleRGBA(RIGHT, RED, ledBrightness);    // set right LED 'red'
+        dataPacket.leftState = HARD;                 // update left state
+        dataPacket.rightState = STOP;                // update right state
+        break;
+      case SOUTH:
+        setSingleRGBA(LEFT, BLUE, ledBrightness);    // set left LED 'blue'
+        setSingleRGBA(RIGHT, BLUE, ledBrightness);   // set right LED 'blue'
+        dataPacket.leftState = LIGHT;                // update left state
+        dataPacket.rightState = LIGHT;               // update right state
         break;
     }
 
@@ -563,11 +529,13 @@ void skipLogic() {
     transmit();      // update client
   }
 
+  // 4. Pairing Mode (if no connected peers)
   else {
     #ifdef DEBUG
     Serial.println("Waiting for peers to connect");
     #endif
 
+    // Set both LEDs 'white'
     setSingleRGBA(LEFT, WHITE, ledBrightness);
     setSingleRGBA(RIGHT, WHITE, ledBrightness);
 
@@ -575,7 +543,7 @@ void skipLogic() {
     delay(SYS_DELAY);  // TODO: replace with timeout timer
   }
 
-  // Check for power push button (PB)
+  // 5. Check for power push button (PB)
   if (pbPairingLongPress) {
     goToSleep();
   }
@@ -865,10 +833,9 @@ void goToSleep() {
   setSingleRGBA(LEFT, OFF, ledBrightness);
   setSingleRGBA(RIGHT, OFF, ledBrightness);
   #else
-  // Initialize LED colors
+  // turn off LEDS
   setStripRGBA(OFF, ledBrightness);
   #endif
-
 
   // Disable wakeup source (ie. the timer used for light sleep)
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
