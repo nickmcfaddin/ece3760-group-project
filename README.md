@@ -2,12 +2,6 @@
 
 > "Our aim is to help level the playing field for deaf curlers. Our product allows _skip_ and _sweepers_ to easily communicate non-verbally through **intuitive**, **non-invasice**, and cost **cost-effective** design."
 
-## Project Overview
-
-
-
-## Development
-
 ### Project Setup
 
 Clone the project
