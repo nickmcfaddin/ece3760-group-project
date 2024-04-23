@@ -4,7 +4,7 @@
 
 ## About The Project
 
-All code was initially done on @Kameroni33's GitHub, added to here is my personal lab book for the term which received the best mark in the class.
+All code was initially done on @Kameroni33's GitHub, added to here is my personal lab book for the term which received the best mark in the class.\\
 Our group's project won the award for best equitable design in the class.
 
 ### Project Setup
