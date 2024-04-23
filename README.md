@@ -2,6 +2,11 @@
 
 > "Our aim is to help level the playing field for deaf curlers. Our product allows _skip_ and _sweepers_ to easily communicate non-verbally through **intuitive**, **non-invasice**, and cost **cost-effective** design."
 
+## About The Project
+
+All code was initially done on @Kameroni33's GitHub, added to here is my personal lab book for the term which received the best mark in the class.
+Our group's project won the award for best equitable design in the class.
+
 ### Project Setup
 
 Clone the project
