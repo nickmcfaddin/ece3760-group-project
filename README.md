@@ -8,7 +8,7 @@ All code was initially done on @Kameroni33's GitHub, added to here is my persona
 
 Our group's project won the award for best equitable design in the class.
 
-### Project Setup
+## Project Setup
 
 Clone the project
 ```shell
